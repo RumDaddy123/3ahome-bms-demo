@@ -1,0 +1,237 @@
+<!doctype html>
+<html lang="vi">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#0B0F16">
+<title>3AHOME BMS</title>
+<meta name="description" content="Ứng dụng vận hành BMS: 3D tổng quan toà nhà chỉ ra tầng đang lỗi, mặt bằng 2D từng tầng và sơ đồ kết nối thiết bị lên trục chính.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+:root{
+  --bg:#0B0F16; --panel:#131924; --panel-2:#1A2230; --line:#232C3B; --line-2:#2F3A4D;
+  --ink:#E8ECF3; --ink-2:#A6B0C0; --muted:#6F7B8E;
+  --ok:#2BD37A; --warn:#F5B23C; --alarm:#FF5A5A; --off:#5A6678; --accent:#27C8D6;
+  --font:"Be Vietnam Pro",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  --sb:env(safe-area-inset-bottom,0px); --st:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box} [hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased;overscroll-behavior:none}
+button,input{font:inherit;color:inherit} button{cursor:pointer;background:none;border:0}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.mono{font-family:var(--mono)} .muted{color:var(--muted);font-size:12.5px}
+#app{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr auto;padding-top:var(--st)}
+header{display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid var(--line);background:var(--panel)}
+.logo{display:flex;align-items:center;gap:8px;font-weight:700;white-space:nowrap}
+.logo i{width:27px;height:27px;border-radius:7px;background:var(--accent);color:#06222A;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:12px}
+.logo small{display:block;font-size:9.5px;letter-spacing:.1em;color:var(--muted);font-weight:600;line-height:1.1}
+.kpis{margin-left:auto;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}.kpis::-webkit-scrollbar{display:none}
+.kpi{flex:none;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:4px 9px;min-width:52px;text-align:center}
+.kpi b{display:block;font-size:14px;font-variant-numeric:tabular-nums;line-height:1.2}
+.kpi span{font-size:9px;color:var(--muted);letter-spacing:.04em;text-transform:uppercase}
+.kpi.alarm b{color:var(--alarm)}.kpi.warn b{color:var(--warn)}.kpi.ok b{color:var(--ok)}
+main{position:relative;overflow:hidden}
+.pane{position:absolute;inset:0;display:grid;overflow:hidden}
+/* ---- tổng quan ---- */
+#pane-tower{grid-template-rows:minmax(42%,1fr) auto}
+#stage{position:relative;overflow:hidden;background:radial-gradient(120% 90% at 50% 0%, #16202E 0%, #0B0F16 60%)}
+#stage canvas{display:block;width:100%!important;height:100%!important;touch-action:none}
+#fps{position:absolute;left:10px;bottom:8px;font-family:var(--mono);font-size:10.5px;color:var(--muted);pointer-events:none}
+#fps b{color:var(--ok)}
+.hint3d{position:absolute;left:10px;top:10px;font-size:11.5px;color:var(--muted);background:rgba(11,15,22,.7);padding:5px 9px;border-radius:7px;pointer-events:none}
+#ovBody{overflow-y:auto;padding:12px 14px calc(14px + var(--sb));display:grid;gap:12px;align-content:start;background:var(--panel);border-top:1px solid var(--line)}
+.ovsec{display:grid;gap:6px}
+.ovh{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.trunk{display:grid;grid-template-columns:auto 1fr;gap:2px 8px;background:var(--panel-2);border:1px solid var(--line);border-left:3px solid var(--ok);border-radius:10px;padding:8px 11px}
+.trunk.warn{border-left-color:var(--warn)} .trunk.off{border-left-color:var(--off)}
+.trunk b{font-size:13px} .trunk span{font-size:11.5px;color:var(--muted);text-align:right}
+.trunk i{grid-column:1/-1;font-style:normal;font-size:11.5px;color:var(--ink-2);font-family:var(--mono)}
+.frow{display:grid;grid-template-columns:auto auto 1fr auto;align-items:center;gap:8px;width:100%;text-align:left;background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:9px 11px;min-height:46px}
+.frow .dot{width:9px;height:9px;border-radius:50%}
+.frow b{font-size:13px;white-space:nowrap}
+.frow .fm{font-size:11px;color:var(--muted);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.frow i{font-style:normal;font-size:11px;color:var(--ink-2);white-space:nowrap}
+.tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(88px,1fr));gap:6px}
+.tcell{background:var(--panel-2);border:1px solid var(--line);border-radius:10px;padding:8px;text-align:center;position:relative}
+.tcell b{display:block;font-size:17px;font-variant-numeric:tabular-nums}
+.tcell span{font-size:10.5px;color:var(--muted);display:block;line-height:1.25}
+.tcell i{position:absolute;top:4px;right:5px;font-style:normal;font-size:10px;font-weight:700;color:var(--alarm)}
+.tcell.bad{border-color:rgba(255,90,90,.4)}
+/* ---- tầng ---- */
+#pane-floor{grid-template-rows:auto auto 1fr}
+.flhead{display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid var(--line);background:var(--panel)}
+.flhead .back{width:34px;height:34px;border-radius:9px;background:var(--panel-2);border:1px solid var(--line);display:grid;place-items:center;flex:none}
+.flhead h2{margin:0;font-size:16px} .flhead .m{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.seg2{display:flex;gap:4px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:3px;margin-left:auto;flex:none}
+.seg2 button{border-radius:7px;padding:7px 11px;font-size:12.5px;font-weight:600;color:var(--ink-2);min-height:34px}
+.seg2 button.on{background:var(--accent);color:#06222A}
+.flbad{display:flex;gap:6px;overflow-x:auto;padding:8px 13px;border-bottom:1px solid var(--line);background:var(--panel);scrollbar-width:none}
+.flbad::-webkit-scrollbar{display:none}
+.chipbad{flex:none;border-radius:999px;padding:6px 11px;font-size:11.5px;font-weight:600;font-family:var(--mono);min-height:32px;border:1px solid}
+.chipbad.alarm{background:rgba(255,90,90,.14);border-color:rgba(255,90,90,.5);color:var(--alarm)}
+.chipbad.warn{background:rgba(245,178,60,.13);border-color:rgba(245,178,60,.45);color:var(--warn)}
+.chipbad.off{background:rgba(90,102,120,.2);border-color:rgba(90,102,120,.5);color:#9AA6B8}
+#fl3d{position:relative;overflow:hidden;background:radial-gradient(120% 90% at 50% 0%, #16202E 0%, #0B0F16 60%)}
+#pane-floor{grid-template-rows:auto auto minmax(0,1fr)}
+#flView{overflow:auto;padding:10px 56px calc(14px + var(--sb)) 12px;background:#0A0E15}
+svg.plan{width:100%;height:100%;max-height:100%;display:block}
+svg.riser{width:100%;height:auto;display:block}
+#flView{display:grid}
+svg.plan .rn{fill:#95A3B8;font-size:9px;font-family:var(--font);text-anchor:middle}
+svg.plan .dt{fill:#C9D2E0;font-size:8.5px;font-family:var(--mono);text-anchor:middle}
+svg.plan .dev,svg.plan .room,svg.riser .dev{cursor:pointer}
+svg.plan .dev.hot rect{stroke:#fff;stroke-width:2}
+svg.plan .dev.sel rect{stroke:#27C8D6;stroke-width:3}
+svg.riser .rt{fill:#E8ECF3;font-size:11px;font-weight:700;text-anchor:middle;font-family:var(--font)}
+svg.riser .rs{fill:#6F7B8E;font-size:9px;text-anchor:middle;font-family:var(--mono)}
+svg.riser .rl{fill:#A6B0C0;font-size:10px;text-anchor:middle;font-family:var(--font)}
+svg.riser .rv{fill:#E8ECF3;font-size:10px;text-anchor:middle;font-family:var(--mono)}
+svg.riser .rl2{fill:#D5DCE8;font-size:11px;font-family:var(--font)}
+svg.riser .rb{fill:#0B0F16;font-size:8.5px;font-weight:700;text-anchor:middle;font-family:var(--mono)}
+svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono)}
+/* ---- rail tầng ---- */
+#floors{position:absolute;right:8px;top:8px;bottom:8px;z-index:6;z-index:6;display:flex;flex-direction:column-reverse;gap:3px;overflow-y:auto;scrollbar-width:none;align-items:flex-end}
+#floors::-webkit-scrollbar{display:none}
+#floors button{flex:none;width:40px;min-height:28px;border:1px solid var(--line-2);background:rgba(19,25,36,.92);backdrop-filter:blur(8px);border-radius:8px;font-size:11px;font-weight:700;color:var(--ink-2);font-family:var(--mono);position:relative}
+#floors button.on{background:var(--accent);border-color:var(--accent);color:#06222A}
+#floors .dot{position:absolute;top:3px;right:3px;width:6px;height:6px;border-radius:50%}
+/* ---- panes phụ ---- */
+#alBody,#pfBody{overflow-y:auto;padding:12px 14px calc(16px + var(--sb));display:grid;gap:10px;align-content:start}
+.list{display:grid;gap:7px}
+.item{display:flex;align-items:center;gap:10px;background:var(--panel-2);border:1px solid var(--line);border-radius:11px;padding:10px 12px;text-align:left;width:100%;min-height:54px}
+.item .dot{width:9px;height:9px;border-radius:50%;flex:none}
+.item .t{flex:1;min-width:0}.item .t b{display:block;font-size:13px}
+.item .t span{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.item .v{font-family:var(--mono);font-size:12.5px;color:var(--ink-2);white-space:nowrap}
+.logline{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);border-left:2px solid var(--line-2);padding:4px 0 4px 9px}
+.logline em{color:var(--muted);font-style:normal}
+.bench{display:grid;gap:9px}.bench table{width:100%;border-collapse:collapse;font-size:12.5px}
+.bench td{padding:6px 0;border-bottom:1px solid var(--line)}
+.bench td:last-child{text-align:right;font-family:var(--mono)}.bench td:first-child{color:var(--muted)}
+.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}.bar i{display:block;height:100%;background:var(--accent)}
+/* ---- tabbar + sheet ---- */
+.tabbar{display:grid;grid-template-columns:repeat(4,1fr);background:var(--panel);border-top:1px solid var(--line);padding-bottom:var(--sb)}
+.tabbar button{padding:8px 2px;display:grid;gap:3px;justify-items:center;font-size:10.5px;font-weight:600;color:var(--muted);min-height:50px;position:relative}
+.tabbar button.on{color:var(--accent)}.tabbar svg{width:20px;height:20px}
+.tabbar .badge{position:absolute;top:4px;left:50%;margin-left:3px;background:var(--alarm);color:#fff;border-radius:9px;font-size:9.5px;padding:1px 5px;font-weight:700}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:30;background:var(--panel);border-top:1px solid var(--line-2);border-radius:18px 18px 0 0;box-shadow:0 -14px 40px rgba(0,0,0,.5);transform:translateY(102%);transition:transform .26s cubic-bezier(.22,.9,.3,1);max-height:min(78vh,640px);display:grid;grid-template-rows:auto auto 1fr;padding-bottom:var(--sb)}
+.sheet.open{transform:none}
+.sheet .grip{width:40px;height:4px;border-radius:2px;background:var(--line-2);margin:9px auto 2px}
+.sheet .sh{display:flex;align-items:flex-start;gap:10px;padding:4px 16px 10px;border-bottom:1px solid var(--line)}
+.sheet .sh .t{flex:1;min-width:0}.sheet .sh h3{margin:0;font-size:16px}
+.sheet .sh .tag{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.sheet .body{overflow-y:auto;padding:12px 16px 18px;display:grid;gap:12px;align-content:start}
+.x{width:34px;height:34px;border-radius:50%;background:var(--panel-2);border:1px solid var(--line);display:grid;place-items:center;font-size:17px;color:var(--ink-2);flex:none}
+.pill{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:3px 8px;border-radius:999px;flex:none}
+.pill.ok{background:rgba(43,211,122,.14);color:var(--ok)}.pill.warn{background:rgba(245,178,60,.14);color:var(--warn)}
+.pill.alarm{background:rgba(255,90,90,.15);color:var(--alarm)}.pill.off{background:rgba(90,102,120,.2);color:#9AA6B8}
+.vals{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.val{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.val span{font-size:11px;color:var(--muted);display:block}
+.val b{font-size:19px;font-variant-numeric:tabular-nums;font-weight:600}
+.val b small{font-size:12px;color:var(--ink-2);font-weight:500}
+.trend{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.trend canvas{width:100%;height:60px;display:block}
+.trend .lb{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:4px}
+.ctl{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;gap:10px}
+.ctl .row{display:flex;align-items:center;gap:10px}.ctl .row b{flex:1;font-size:13px}
+.step{display:flex;align-items:center;gap:8px}
+.step button{width:40px;height:40px;border-radius:10px;background:var(--line);font-size:19px;font-weight:700}
+.step b{min-width:66px;text-align:center;font-family:var(--mono);font-size:16px}
+.seg{display:grid;grid-auto-flow:column;grid-auto-columns:1fr;gap:4px;background:var(--bg);border-radius:10px;padding:4px}
+.seg button{border-radius:8px;padding:9px 4px;font-size:12.5px;font-weight:600;color:var(--ink-2);min-height:40px}
+.seg button.on{background:var(--accent);color:#06222A}
+.chain{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-family:var(--mono);font-size:11px}
+.chain span{background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:5px 8px}
+.chain span.bad{border-color:var(--alarm);color:var(--alarm)}
+.chain i{color:var(--muted);font-style:normal}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;border:1px solid var(--line-2);background:var(--panel-2);border-radius:10px;padding:11px 14px;font-weight:600;font-size:13.5px;min-height:46px}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#06222A}
+.btn.danger{background:rgba(255,90,90,.12);border-color:rgba(255,90,90,.4);color:var(--alarm)}
+.btn.full{width:100%}
+.toast{position:fixed;left:50%;bottom:calc(74px + var(--sb));transform:translateX(-50%) translateY(14px);background:var(--ink);color:#0B0F16;padding:10px 15px;border-radius:9px;font-size:13px;font-weight:600;z-index:40;opacity:0;transition:opacity .18s,transform .18s;pointer-events:none;max-width:calc(100vw - 28px);text-align:center}
+.toast.show{opacity:1;transform:translateX(-50%)}
+.loading{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:13px;z-index:9;text-align:center;padding:20px}
+@media (min-width:980px){
+  #app{grid-template-rows:auto auto 1fr}
+  .tabbar{grid-template-columns:repeat(4,150px);justify-content:start;border-top:0;border-bottom:1px solid var(--line);order:-1}
+  #pane-tower{grid-template-rows:1fr;grid-template-columns:1fr 390px}
+  #ovBody{border-top:0;border-left:1px solid var(--line)}
+  .sheet{left:auto;right:14px;bottom:14px;width:390px;border-radius:16px;max-height:calc(100vh - 160px);border:1px solid var(--line-2)}
+  .toast{bottom:24px}
+}
+</style>
+
+<div id="app">
+  <header>
+    <div class="logo"><i>3A</i><span>3AHOME Building Test<small>BMS · BẢN MẪU VẬN HÀNH</small></span></div>
+    <div class="kpis">
+      <div class="kpi ok"><b id="kOnline">—</b><span>Online</span></div>
+      <div class="kpi warn"><b id="kWarn">0</b><span>Cảnh báo</span></div>
+      <div class="kpi alarm"><b id="kAlarm">0</b><span>Sự cố</span></div>
+      <div class="kpi"><b id="kPower">—</b><span>kW</span></div>
+    </div>
+  </header>
+
+  <main>
+    <section class="pane" id="pane-tower">
+      <div id="stage">
+        <div class="loading" id="loading">Đang dựng mô hình…</div>
+        <div class="hint3d">Chạm vào một sàn để vào quản lý tầng</div>
+        <div id="fps"></div>
+        <div id="floors"></div>
+      </div>
+      <div id="ovBody"></div>
+    </section>
+
+    <section class="pane" id="pane-floor" hidden>
+      <div class="flhead">
+        <button class="back" id="flBack" aria-label="Về tổng quan">‹</button>
+        <div><h2 id="flName">—</h2><div class="m" id="flMeta"></div></div>
+        <div class="seg2" id="flSub">
+          <button data-sub="plan" class="on">Mặt bằng</button>
+          <button data-sub="riser">Sơ đồ trục</button>
+          <button data-sub="3d">3D tầng</button>
+        </div>
+      </div>
+      <div class="flbad" id="flBad"></div>
+      <div id="flView"></div>
+      <div id="fl3d" hidden></div>
+    </section>
+
+    <section class="pane" id="pane-alarms" hidden><div id="alBody"></div></section>
+    <section class="pane" id="pane-perf" hidden><div id="pfBody"></div></section>
+  </main>
+
+  <nav class="tabbar">
+    <button data-tab="tower" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"/><path d="M4 21h16M10 7h4M10 11h4M10 15h4"/></svg><span>Tổng quan</span></button>
+    <button data-tab="floor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 10h8V3M11 10v11M11 14h10"/></svg><span>Tầng</span></button>
+    <button data-tab="alarms"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a6 6 0 0 0-6 6v4l-2 3h16l-2-3V9a6 6 0 0 0-6-6z"/><path d="M10 20h4"/></svg><span>Sự cố</span><span class="badge" id="tabBadge" hidden>0</span></button>
+    <button data-tab="perf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19h16"/><path d="M7 19V9M12 19V5M17 19v-7"/></svg><span>Hiệu năng</span></button>
+  </nav>
+</div>
+
+<div class="sheet" id="sheet">
+  <div class="grip"></div>
+  <div class="sh"><div class="t"><h3 id="shTitle">—</h3><div class="tag" id="shTag"></div></div>
+    <span class="pill ok" id="shPill" hidden>OK</span><button class="x" id="shClose" aria-label="Đóng">×</button></div>
+  <div class="body" id="shBody"></div>
+</div>
+<div class="toast" id="toast"></div>
+<span id="alCount" hidden></span>
+
+<script src="plan.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="floor3d.js"></script>
+<script src="ops.js"></script>
+<script>
+(function(){ var el=document.getElementById('loading');
+  if (typeof THREE==='undefined'){ el.textContent='Không tải được thư viện 3D.'; return; }
+  try{ window.__initBMS(); }catch(e){ el.textContent='Lỗi khởi tạo: '+e.message; console.error(e); }
+})();
+</script>
+
+</html>
