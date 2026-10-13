@@ -23,9 +23,11 @@ button,input{font:inherit;color:inherit} button{cursor:pointer;background:none;b
 .mono{font-family:var(--mono)} .muted{color:var(--muted);font-size:12.5px}
 #app{position:fixed;inset:0;display:grid;grid-template-rows:auto 1fr auto;padding-top:var(--st)}
 header{display:flex;align-items:center;gap:10px;padding:9px 13px;border-bottom:1px solid var(--line);background:var(--panel)}
-.logo{display:flex;align-items:center;gap:8px;font-weight:700;white-space:nowrap}
-.logo i{width:27px;height:27px;border-radius:7px;background:var(--accent);color:#06222A;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:12px}
-.logo small{display:block;font-size:9.5px;letter-spacing:.1em;color:var(--muted);font-weight:600;line-height:1.1}
+.logo{display:grid;grid-template-columns:auto 1fr;align-items:center;gap:1px 8px;font-weight:700;white-space:nowrap;min-width:0}
+#bldName{grid-column:2;font-size:14px;overflow:hidden;text-overflow:ellipsis}
+.logo i{grid-row:1/3;width:27px;height:27px;border-radius:7px;background:var(--accent);color:#06222A;display:grid;place-items:center;font-style:normal;font-weight:800;font-size:12px;overflow:hidden}
+.logo i.img{background:none} .logo i img{width:100%;height:100%;object-fit:contain}
+.logo small{grid-column:2;font-size:9.5px;letter-spacing:.06em;color:var(--muted);font-weight:600;line-height:1.1;overflow:hidden;text-overflow:ellipsis}
 .kpis{margin-left:auto;display:flex;gap:6px;overflow-x:auto;scrollbar-width:none}.kpis::-webkit-scrollbar{display:none}
 .kpi{flex:none;background:var(--panel-2);border:1px solid var(--line);border-radius:9px;padding:4px 9px;min-width:52px;text-align:center}
 .kpi b{display:block;font-size:14px;font-variant-numeric:tabular-nums;line-height:1.2}
@@ -188,6 +190,60 @@ svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono
 .wo b{font-size:11.5px;color:var(--accent)} .wo span{flex:1;font-size:13px}
 .wo em{display:block;font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:2px}
 .wo i{font-style:normal;font-size:11px;color:var(--warn)} .wo.done i{color:var(--ok)} .wo.done b{opacity:.6}
+/* nhóm con trong thẻ Vận hành */
+.subnav{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;min-height:40px;align-items:center;position:sticky;top:0;z-index:4;background:var(--bg);padding-bottom:2px}
+.subnav::-webkit-scrollbar{display:none}
+.subnav button{flex:none;border:1px solid var(--line-2);background:var(--panel-2);color:var(--ink-2);border-radius:999px;padding:7px 13px;font-size:12.5px;font-weight:600;min-height:36px}
+.subnav button.on{background:var(--accent);border-color:var(--accent);color:#06222A}
+.subnav i{font-style:normal;font-family:var(--mono);opacity:.75;margin-left:3px}
+.fld{display:grid;gap:4px;margin-top:8px}
+.fld>span{font-size:11.5px;color:var(--muted)}
+.fld input{background:var(--bg);border:1px solid var(--line-2);border-radius:9px;padding:10px 11px;min-height:42px;font-size:13.5px;width:100%}
+.logorow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.lgprev{width:40px;height:40px;border-radius:9px;background:var(--accent);color:#06222A;display:grid;place-items:center;font-weight:800;font-size:13px;overflow:hidden;flex:none}
+.lgprev img{width:100%;height:100%;object-fit:contain}
+.logorow .initin{width:72px;flex:none;background:var(--bg);border:1px solid var(--line-2);border-radius:8px;padding:8px;text-align:center;font-weight:700;min-height:40px}
+.swrow{display:flex;gap:7px;flex-wrap:wrap}
+.sw{width:32px;height:32px;border-radius:50%;border:2px solid transparent}
+.sw.on{border-color:var(--ink);box-shadow:0 0 0 2px var(--bg) inset}
+.cok{color:var(--ok)} .cwarn{color:var(--warn)} .calarm{color:var(--alarm)}
+/* thanh tỉ lệ có nhãn hai đầu */
+.hbar{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px;margin-top:7px;font-size:12.5px}
+.hbar b{font-family:var(--mono);font-size:11.5px;color:var(--ink-2);white-space:nowrap}
+/* biểu đồ năng lượng */
+.echart{width:100%;height:auto;display:block}
+.echart .eg{fill:#6F7B8E;font-size:7px;font-family:var(--mono);text-anchor:end}
+.echart .ex{fill:#6F7B8E;font-size:7px;font-family:var(--mono);text-anchor:middle}
+.elg{display:flex;flex-wrap:wrap;gap:10px;font-size:10.5px;color:var(--muted)}
+.elg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:4px;vertical-align:-1px}
+.elg i.dash{background:none;border-top:2px dashed var(--ink);height:0;width:12px;vertical-align:3px}
+/* nhãn phụ trên dòng cảnh báo và phiếu */
+.altags{display:flex;flex-wrap:wrap;gap:5px;padding:0 12px 8px}
+.atag{font-size:10.5px;font-family:var(--mono);color:var(--muted);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:3px 7px}
+.atag.rep{color:var(--ink-2)} .atag.chat{color:var(--warn);border-color:rgba(245,178,60,.4)}
+.atag.rtn{color:#8EC5FF;border-color:rgba(142,197,255,.35)}
+.atag.esc{color:var(--alarm);border-color:rgba(255,90,90,.45)}
+.atag.shv{color:#9AA6B8} .atag.ok{color:var(--ok);border-color:rgba(43,211,122,.35)}
+.alrow.esc{border-left-color:var(--alarm);box-shadow:inset 0 0 0 1px rgba(255,90,90,.18)}
+.escbar{background:rgba(255,90,90,.12);border:1px solid rgba(255,90,90,.4);color:var(--alarm);border-radius:10px;padding:9px 12px;font-size:12.5px;font-weight:600}
+.ackbox.wrap{flex-wrap:wrap}
+/* phòng và lịch đặt */
+.orow{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-top:7px;display:grid;gap:5px;justify-items:start}
+.oh{display:flex;align-items:center;gap:8px;width:100%}.oh b{flex:1;font-size:13px}
+.omode{font-size:10.5px;font-weight:700;padding:3px 7px;border-radius:999px;background:rgba(43,211,122,.14);color:var(--ok)}
+.omode.setback{background:rgba(245,178,60,.16);color:var(--warn)}
+.omode.hold{background:rgba(39,200,214,.14);color:var(--accent)}
+.obook{font-size:11.5px;font-family:var(--mono);color:var(--muted);border-left:2px solid var(--line-2);padding-left:8px}
+.obook.live{color:var(--accent);border-left-color:var(--accent)}
+.obook.rel{color:var(--ok);border-left-color:var(--ok)}
+/* bảo trì theo giờ chạy */
+.pmrow{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-top:7px;display:grid;gap:6px;justify-items:start}
+.pmh{display:flex;justify-content:space-between;width:100%;font-size:12.5px}.pmh b{font-family:var(--mono);font-size:12px}
+.pmh span{color:var(--muted);font-size:11.5px}
+.pmrow .bar{width:100%}
+.pmf{display:flex;justify-content:space-between;gap:10px;width:100%;font-size:11px;color:var(--muted)}
+.wlog{font-size:10.5px;font-family:var(--mono);color:var(--muted);border-top:1px solid var(--line);padding-top:6px;line-height:1.6}
+.fcard.wdone{opacity:.6;border-left-color:var(--ok)}
 .fcard{background:var(--panel-2);border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:12px;padding:11px 12px;display:grid;gap:6px}
 .fcard.sev1{border-left-color:var(--alarm)} .fcard.sev2{border-left-color:var(--warn)} .fcard.sev3{border-left-color:#8EC5FF}
 .fh{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -218,7 +274,7 @@ svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono
 
 <div id="app">
   <header>
-    <div class="logo"><i>3A</i><span>3AHOME Building Test<small>BMS · BẢN MẪU VẬN HÀNH</small></span></div>
+    <div class="logo"><i id="bldLogo">3A</i><span id="bldName">—</span><small id="bldSub"></small></div>
     <button class="hbtn" id="btnSearch" aria-label="Tìm thiết bị">⌕</button>
     <span class="conn ok" id="connState">—</span>
     <span class="rolechip" id="roleChip">Vận hành</span>
@@ -227,6 +283,7 @@ svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono
       <div class="kpi warn"><b id="kWarn">0</b><span>Cảnh báo</span></div>
       <div class="kpi alarm"><b id="kAlarm">0</b><span>Sự cố</span></div>
       <div class="kpi"><b id="kPower">—</b><span>kW</span></div>
+      <div class="kpi ok"><b id="kHealth">—</b><span>Sức khoẻ</span></div>
     </div>
   </header>
 
@@ -284,14 +341,21 @@ svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono
 <div class="toast" id="toast"></div>
 <span id="alCount" hidden></span>
 
-<script src="plan.js"></script>
+<script src="site.js?v=3"></script>
+<script src="plan.js?v=3"></script>
+<script src="alarms.js?v=3"></script>
+<script src="health.js?v=3"></script>
+<script src="energy.js?v=3"></script>
+<script src="work.js?v=3"></script>
+<script src="occ.js?v=3"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="floor3d.js"></script>
-<script src="fdd.js"></script>
-<script src="ops.js"></script>
+<script src="floor3d.js?v=3"></script>
+<script src="fdd.js?v=3"></script>
+<script src="ops.js?v=3"></script>
 <script>
 (function(){ var el=document.getElementById('loading');
   if (typeof THREE==='undefined'){ el.textContent='Không tải được thư viện 3D.'; return; }
-  try{ window.__initBMS(); }catch(e){ el.textContent='Lỗi khởi tạo: '+e.message; console.error(e); }
+  var go=function(){ try{ window.__initBMS(); }catch(e){ el.textContent='Lỗi khởi tạo: '+e.message; console.error(e); } };
+  SITE.load().then(go, go);
 })();
 </script>

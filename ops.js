@@ -8,11 +8,17 @@ const HEX={ok:0x2BD37A, warn:0xF5B23C, alarm:0xFF5A5A, off:0x5A6678};
 const ST_VN={ok:'Bình thường', warn:'Cảnh báo', alarm:'Sự cố', off:'Mất kết nối'};
 const worstOf = ds => ds.reduce((m,d)=>d.status==='alarm'?'alarm':((d.status==='warn'||d.status==='off')&&m!=='alarm'?(d.status==='off'?'off':'warn'):m),'ok');
 
-const view={tab:'tower', floor:'F10', sub:'plan', sel:null, alFilter:'all', ackFor:null};
+const view={tab:'tower', floor:'F10', sub:'plan', sel:null, alFilter:'all', ackFor:null,
+  shelveFor:null, opSub:'health', wkFilter:'open', wkFor:null, fddCat:'all'};
 const OPS = { role:'operator', connected:true, lastTick:Date.now(), kwh:0,
   sched:{on:'07:00', off:'18:00', mode:'auto', sat:true, sun:false},
   handover:[{t:new Date(Date.now()-3600*1000*5), who:'Ca sáng', txt:'Đã kiểm tra chiller 1, dầu bình thường. FCU tầng 3 còn kêu, đã báo kỹ thuật.'}] };
 const ROLE_VN={operator:'Vận hành',tech:'Kỹ thuật',viewer:'Khách'};
+if (window.SITE){ const c=SITE.cfg;
+  BLD.name = c.building.name || BLD.name;
+  OPS.sched.on=c.ops.schedOn; OPS.sched.off=c.ops.schedOff; OPS.sched.sat=c.ops.sat; OPS.sched.sun=c.ops.sun; }
+const GIA_KWH = (window.SITE?SITE.kwhPrice:0) || 3200;
+const logSite = (kind,rec)=>{ if(window.SITE) SITE.write(kind, rec); };
 const hhmm = d => String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
 function inSchedule(){ const now=new Date(), dow=now.getDay(), t=hhmm(now);
   if (OPS.sched.mode==='on') return true; if (OPS.sched.mode==='off') return false;
@@ -30,7 +36,7 @@ function initF3(){ if(initF3.done||!window.F3) return; initF3.done=true;
   F3.init({devices, floorOf, HEX, worstOf, selected:()=>view.sel, onPick:d=>openDev(d)}); }
 
 // ---------- dữ liệu ----------
-const devices=[], alarms=[], auditLog=[]; let uid=0;
+const devices=[], auditLog=[]; let uid=0;
 const mk=o=>{o.id='d'+(uid++); o.hist=[]; o.status='ok'; devices.push(o); return o;};
 const floorOf=id=>BLD.floors.find(f=>f.id===id);
 // trục đứng: 2 trục BACnet MSTP (trục A: hầm→tầng 12, trục B: tầng 13→mái) + trục IP về server
@@ -39,7 +45,9 @@ BLD.floors.forEach(f=>{
   f.rooms.forEach((r,ri)=>{
     if (['office','meeting','retail','lobby','pantry','bms'].includes(r.kind)){
       mk({t:'FCU',floor:f.id,room:ri,tag:`${f.id}-${String(ri+1).padStart(2,'0')}-FCU`,st:{run:true,fan:['Thấp','Vừa','Cao'][ri%3],hours:Math.round(rnd(800,9000)),filter:rnd(12,72)}});
-      mk({t:'TS', floor:f.id,room:ri,tag:`${f.id}-${String(ri+1).padStart(2,'0')}-TS`, st:{temp:24+rnd(-.8,.8),sp:24,rh:rnd(52,64),co2:rnd(430,760)}});
+      mk({t:'TS', floor:f.id,room:ri,tag:`${f.id}-${String(ri+1).padStart(2,'0')}-TS`, meeting:r.kind==='meeting',
+        cap:{meeting:10,office:16,lobby:30,retail:20,pantry:8,bms:3}[r.kind]||10,
+        st:{temp:24+rnd(-.8,.8),sp:24,rh:rnd(52,64),co2:rnd(430,760)}});
       mk({t:'CV', floor:f.id,room:ri,tag:`${f.id}-${String(ri+1).padStart(2,'0')}-CV`, st:{open:rnd(25,70),dp:rnd(38,62)}});
     }
     if (r.kind==='stair') mk({t:'SD',floor:f.id,room:ri,tag:`${f.id}-${r.n.includes('A')?'A':'B'}-FD`,st:{open:false}});
@@ -63,10 +71,13 @@ BLD.floors.forEach(f=>{
   const ts=f('TS'); if(ts[9]) ts[9].drift=3.2; if(ts[31]) ts[31].drift=1.8;
   const p=devices.find(d=>d.tag==='TĐ.TG1-3'); if(p) p.fault='Mất pha L2';
   if(ts[17]){ ts[17].flat=true; ts[17].st.temp=23.6; }            // cảm biến treo giá trị
+  ts.forEach((d,i)=>{ if(i%7===3){ d.wireless=true; d.batt=Math.round(rnd(18,100)); d.battPerDay=+rnd(.06,.16).toFixed(3); } });
+  if(ts[3]) ts[3].batt=9; if(ts[10]) ts[10].batt=16;               // hai cảm biến sắp hết pin
   const nw=fc[14]; if(nw){ const v=devices.find(x=>x.t==='CV'&&x.floor===nw.floor&&x.room===nw.room);
     if(v){ v.fault='Van không mở'; v.st.open=2; } }                // FCU chạy mà không có nước lạnh
   const sp=devices.find(d=>d.t==='SPF'); if(sp){ sp.st.run=true; sp.st.pa=5; sp.stuckPa=true; }
-  const ts2=f('TS'); if(ts2[41]) ts2[41].st.co2=1280;              // thiếu khí tươi
+  const ts2=f('TS'); if(ts2[41]){ ts2[41].stuffy=true; ts2[41].st.co2=1280; }   // phòng đông người, thiếu khí tươi
+  const pn=f('PANEL'); if(pn[2]){ pn[2].heavy=true; pn[2].st.amp=47; }          // tủ điện tải cao kéo dài
 })();
 function statusOf(d){ if(d.offline) return 'off';
   switch(d.t){
@@ -85,33 +96,48 @@ function mainTxt(d){ switch(d.t){
   case 'FCU': return d.offline?'mất KN':(d.st.run?d.st.fan:'Tắt'); case 'DDC': return Math.round(d.st.cpu)+'%';
   case 'PANEL': return Math.round(d.st.amp)+' A'; case 'CTRL': return d.st.fd+' FD';
   case 'SD': return d.st.open?'Mở':'Đóng'; default: return d.st.run?Math.round(d.st.pa)+' Pa':'Dừng'; } }
-function pushAlarm(d){ if (d.shelveUntil && Date.now()<d.shelveUntil) return;
-  alarms.unshift({dev:d,lvl:d.status,prio:prioOf(d),t:new Date(),
-  msg:d.fault||(d.t==='TS'?`Lệch nhiệt độ ${(d.st.temp-d.st.sp).toFixed(1)}°C`:d.t==='CV'?'Van mở gần hết':d.t==='FCU'?'Chênh áp lọc gió cao':'Vượt ngưỡng')});
-  if(alarms.length>80) alarms.pop(); }
 const logCmd=t=>{auditLog.unshift({t:new Date(),txt:t}); if(auditLog.length>40) auditLog.pop();};
 function tick(){
   if(!OPS.connected) return;                       // mô phỏng mất kết nối: dữ liệu đứng yên
   OPS.lastTick=Date.now();
   const open=inSchedule();
+  const kwTgt = (window.EN?EN.baseline(new Date().getHours(), open):120)*(open?1.02:1.2);
+  const ampTgt = kwTgt/(PANEL_N*.38*1.73);
   OPS.kwh += devices.filter(d=>d.t==='PANEL').reduce((s,d)=>s+d.st.amp*.38*1.73,0)*(1.5/3600);
   devices.forEach(d=>{ if(d.offline) return;
     if(d.t==='FCU' && !d.fault){ d.st.run=open; }
-    if(d.t==='TS') d.st.sp = open?24:28;
+    if(d.t==='TS'){ const ns=(open?24:28)+(d.setback||0);
+      if(ns!==d.st.sp){ d.st.sp=ns; d.spAt=Date.now(); } }
   switch(d.t){
     case 'TS':{const tg=d.st.sp+(d.drift||0); if(!d.flat) d.st.temp+=(tg-d.st.temp)*.12+rnd(-.09,.09);
-      d.st.rh=clamp(d.st.rh+rnd(-.5,.5),45,72); d.st.co2=clamp(d.st.co2+rnd(-22,26),400,1500); break;}
+      d.st.rh=clamp(d.st.rh+rnd(-.5,.5),45,72);
+      const nw=Date.now();
+      if(d.occT==null||nw>d.occT){
+        const p = open ? (d.meeting?.34:.72) : .03;
+        d.occN = d.stuffy ? d.cap : (Math.random()<p ? Math.round(rnd(1,d.cap)) : 0);
+        d.occT = nw + (d.occN ? rnd(120,420) : rnd(240,660))*1000; }
+      const ctg = 420 + (d.occN||0)/d.cap*(d.stuffy?900:370);
+      d.st.co2=clamp(d.st.co2+(ctg-d.st.co2)*.09+rnd(-7,7),400,1700); break;}
     case 'CV': if(!d.fault) d.st.open=clamp(d.st.open+rnd(-4,4),8,95); d.st.dp=clamp(d.st.dp+rnd(-1.5,1.5),30,70); break;
     case 'FCU': if(!d.fault) d.st.filter=clamp(d.st.filter+.02,5,99); break;
     case 'DDC': d.st.cpu=clamp(d.st.cpu+rnd(-3,3),10,92); break;
-    case 'PANEL': d.st.amp=clamp(d.st.amp+rnd(-2,2),6,52); d.st.v=clamp(d.st.v+rnd(-2,2),370,400); break;
+    case 'PANEL': { const tgt = ampTgt*(d.heavy?1.75:1)*rnd(.88,1.12);
+      d.st.amp=clamp(d.st.amp+(tgt-d.st.amp)*.14+rnd(-1.2,1.2),2,56);
+      d.st.v=clamp(d.st.v+rnd(-2,2),370,400); break; }
     case 'SPF': case 'SEF': case 'MAF': case 'EF': d.st.pa = d.stuckPa?clamp(d.st.pa+rnd(-1,1),2,9)
         : d.st.run?clamp((d.st.pa||40)+rnd(-3,3),35,62):clamp(d.st.pa*.8,0,6); break;
   }
-  const prev=d.status; d.status=statusOf(d); if(prev!==d.status&&d.status!=='ok') pushAlarm(d);
-  const v=mainVal(d); if(v!=null){ d.hist.push(v); if(d.hist.length>90) d.hist.shift(); } }); }
-devices.forEach(d=>{ d.status=statusOf(d); if(d.status!=='ok') pushAlarm(d); });
-alarms.forEach((a,i)=>a.t=new Date(Date.now()-(i*6+2)*60000));
+  d.status=statusOf(d);
+  const v=mainVal(d); if(v!=null){ d.hist.push(v); if(d.hist.length>90) d.hist.shift(); } });
+  runModules(open); }
+function runModules(open){
+  if(window.AL)  AL.sync(devices, prioOf);
+  if(window.HLT) HLT.observe(devices, mainVal);
+  if(window.EN)  EN.sample(devices.filter(d=>d.t==='PANEL').reduce((s,d)=>s+d.st.amp*.38*1.73,0), open);
+  if(window.OCC) OCC.run(devices, floorOf, open, (dev,back)=>{ dev.setback=back; });
+}
+devices.forEach(d=>{ d.status=statusOf(d); });
+const PANEL_N = Math.max(1, devices.filter(d=>d.t==='PANEL').length);
 const floorDevs = id => devices.filter(d=>d.floor===id);
 
 // ---------- 3D: chỉ dùng cho tổng quan toà nhà ----------
@@ -313,6 +339,14 @@ function renderTower(){
           <i>${al?al+' sự cố':''}${al&&(x.ds.length-al)?' · ':''}${x.ds.length-al?(x.ds.length-al)+' cảnh báo':''}</i></button>`;
       }).join('') : '<p class="muted">Toàn bộ thiết bị bình thường.</p>'}
     </div>
+    <div class="ovsec"><div class="ovh">Sức khoẻ hệ thống & năng lượng</div>
+      ${(()=>{ const h=window.HLT&&HLT.last(), e=window.EN&&EN.stats(); if(!h||!e) return '';
+        const p=HLT.score(h), [g,cls]=HLT.grade(p);
+        return `<button class="frow" data-ops="health"><span class="dot" style="background:${COL[cls==='ok'?'ok':cls==='warn'?'warn':'alarm']}"></span>
+            <b>Hệ BMS ${p}/100</b><span class="fm">${h.off.length} mất kết nối · ${h.stale.length} số liệu chết · ${h.lowBatt} pin yếu</span><i>xem →</i></button>
+          <button class="frow" data-ops="energy"><span class="dot" style="background:${e.deltaNow>7?COL.warn:COL.ok}"></span>
+            <b>${e.cur.kw.toFixed(0)} kW</b><span class="fm">${e.deltaNow>0?'+':''}${e.deltaNow.toFixed(0)}% so với chuẩn · ngoài giờ ${e.offShare.toFixed(0)}%</span><i>xem →</i></button>`; })()}
+    </div>
     <div class="ovsec"><div class="ovh">Chẩn đoán tự động</div>
       ${(()=>{ const st=window.FDD?FDD.stats():{n:0,vnd:0};
         return st.n? `<button class="frow" id="goFdd"><span class="dot" style="background:var(--warn)"></span><b>${st.n} lỗi</b>
@@ -324,6 +358,7 @@ function renderTower(){
     </div>`;
   $('#ovBody').querySelectorAll('[data-floor]').forEach(b=>b.onclick=()=>openFloor(b.dataset.floor));
   const gf=$('#goFdd'); if(gf) gf.onclick=()=>setTab('fdd');
+  $('#ovBody').querySelectorAll('[data-ops]').forEach(b=>b.onclick=()=>{ view.opSub=b.dataset.ops; setTab('ops'); });
 }
 function renderFloor(){
   const f=floorOf(view.floor), ds=floorDevs(view.floor);
@@ -341,55 +376,79 @@ function renderFloor(){
   $('#flBad').querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openDev(devices.find(x=>x.id===b.dataset.id)));
   document.querySelectorAll('#flSub button').forEach(b=>b.classList.toggle('on', b.dataset.sub===view.sub));
 }
-function alarmList(){
-  const now=Date.now();
-  let L=alarms.filter(a=>!(a.dev.shelveUntil&&now<a.dev.shelveUntil));
-  if(view.alFilter==='un') L=L.filter(a=>!a.ack);
-  else if(view.alFilter==='p1') L=L.filter(a=>a.prio===1);
-  else if(view.alFilter==='shelved') L=alarms.filter(a=>a.dev.shelveUntil&&now<a.dev.shelveUntil);
-  return L.sort((a,b)=> (a.ack?1:0)-(b.ack?1:0) || a.prio-b.prio || b.t-a.t); }
+function fmtAge(ms){ const m=Math.round(ms/60000); return m<1?'vừa xong':m<60?m+' phút':Math.floor(m/60)+'h'+String(m%60).padStart(2,'0'); }
+
 function renderAlarms(){
-  const un=alarms.filter(a=>!a.ack).length, p1=alarms.filter(a=>a.prio===1&&!a.ack).length;
-  const sh=alarms.filter(a=>a.dev.shelveUntil&&Date.now()<a.dev.shelveUntil).length;
-  const L=alarmList();
+  const st=AL.stats(), L=AL.list(view.alFilter);
   const chip=(k,lb,n)=>`<button class="fchip ${view.alFilter===k?'on':''}" data-f="${k}">${lb}${n!=null?` <i>${n}</i>`:''}</button>`;
   $('#alBody').innerHTML = `
-    <div class="fchips">${chip('all','Tất cả',alarms.length)}${chip('un','Chưa xác nhận',un)}${chip('p1','P1 khẩn',p1)}${chip('shelved','Đang tạm ẩn',sh)}</div>
-    ${L.length?`<div class="list">${L.slice(0,40).map(a=>`
-      <div class="alrow p${a.prio} ${a.ack?'acked':''}">
+    <div class="fchips">${chip('all','Đang mở',st.n)}${chip('un','Chưa nhận',st.un)}${chip('p1','P1 khẩn',st.p1)}${chip('esc','Đã leo thang',st.esc)}${chip('chatter','Đang rung',st.chatter)}${chip('shelved','Tạm ẩn',st.shelved)}</div>
+    ${st.esc?`<div class="escbar">⚠ ${st.esc} cảnh báo quá hạn chưa ai nhận, đã chuyển lên ${AL.ESC_TO[st.worstEsc]}</div>`:''}
+    ${L.length?`<div class="list">${L.slice(0,40).map(a=>{
+      const due=AL.dueIn(a), fl=floorOf(a.dev.floor), r=fl.rooms[a.dev.room];
+      return `<div class="alrow p${a.prio} ${a.ack?'acked':''} ${a.esc?'esc':''}">
         <button class="alopen" data-id="${a.dev.id}">
           <span class="pbadge p${a.prio}">P${a.prio}</span>
-          <span class="t"><b>${a.msg}</b><span>${a.dev.tag} · ${floorOf(a.dev.floor).name}${a.ackNote?` · ghi chú: ${a.ackNote}`:''}</span></span>
-          <span class="v">${a.t.toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}</span></button>
-        <div class="alacts">
-          ${a.ack?`<span class="okmark">✓ ${a.ackBy||''} xác nhận</span>`:`<button class="mini" data-ackopen="${a.dev.id}">Xác nhận</button>`}
-          ${a.dev.shelveUntil&&Date.now()<a.dev.shelveUntil?`<span class="okmark">tạm ẩn tới ${new Date(a.dev.shelveUntil).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}</span>`:`<button class="mini" data-shelve="${a.dev.id}">Tạm ẩn 4h</button>`}
+          <span class="t"><b>${a.msg}</b>
+            <span>${a.dev.tag} · ${fl.name}${r?' · '+r.n:''}</span></span>
+          <span class="v">${new Date(a.firstAt).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}</span></button>
+        <div class="altags">
+          <span class="atag">${fmtAge(Date.now()-a.firstAt)}</span>
+          ${a.count>1?`<span class="atag rep">lặp ${a.count} lần</span>`:''}
+          ${a.chatter?`<span class="atag chat">đang rung, đã gộp lại</span>`:''}
+          ${a.state==='rtn'?`<span class="atag rtn">đã tự hết, chờ xác nhận</span>`:''}
+          ${a.esc?`<span class="atag esc">leo thang cấp ${a.esc} → ${AL.ESC_TO[a.esc]}</span>`
+            :(due!=null?`<span class="atag">còn ${due}s trước khi leo thang</span>`:'')}
+          ${AL.shelved(a)?`<span class="atag shv">ẩn tới ${new Date(a.shelveUntil).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}${a.shelveWhy?' · '+a.shelveWhy:''}</span>`:''}
+          ${a.ack?`<span class="atag ok">✓ ${a.ack.who} nhận lúc ${a.ack.at.toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}${a.ack.note?' · '+a.ack.note:''}</span>`:''}
         </div>
-        ${view.ackFor===a.dev.id?`<div class="ackbox"><input id="ackNote" placeholder="Ghi chú: đã gọi kỹ thuật, chờ vật tư…" autocomplete="off"><button class="mini on" data-ackdo="${a.dev.id}">Lưu</button><button class="mini" data-ackcancel="1">Bỏ</button></div>`:''}
-        </div>`).join('')}</div>`
-      : '<p class="muted">Không có cảnh báo nào khớp bộ lọc.</p>'}
+        <div class="alacts">
+          ${a.ack?'':`<button class="mini on" data-ackopen="${a.key}">Nhận xử lý</button>`}
+          ${AL.shelved(a)?`<button class="mini" data-unshelve="${a.key}">Bỏ tạm ẩn</button>`:`<button class="mini" data-shvopen="${a.key}">Tạm ẩn</button>`}
+          <button class="mini" data-mkwo="${a.key}">Tạo phiếu</button>
+          <button class="mini" data-id="${a.dev.id}">Mở thiết bị</button>
+        </div>
+        ${view.ackFor===a.key?`<div class="ackbox"><input id="ackNote" placeholder="Ghi chú: đã gọi kỹ thuật, chờ vật tư…" autocomplete="off"><button class="mini on" data-ackdo="${a.key}">Lưu</button><button class="mini" data-ackcancel="1">Bỏ</button></div>`:''}
+        ${view.shelveFor===a.key?`<div class="ackbox"><input id="shvWhy" placeholder="Lý do tạm ẩn, bắt buộc ghi" autocomplete="off">${[1,4,8].map(h=>`<button class="mini" data-shvdo="${a.key}" data-h="${h}">${h}h</button>`).join('')}<button class="mini" data-shvcancel="1">Bỏ</button></div>`:''}
+        </div>`; }).join('')}</div>`
+      : '<p class="muted">Không có cảnh báo nào trong nhóm này.</p>'}
+    <div><div class="muted" style="margin:12px 0 6px">Nhật ký xử lý cảnh báo</div>
+      ${AL.log.length?AL.log.slice(0,12).map(l=>`<div class="logline"><em>${l.t.toLocaleTimeString('vi-VN')}</em> · ${l.txt}</div>`).join(''):'<p class="muted">Chưa có thao tác nào.</p>'}</div>
     <div><div class="muted" style="margin:12px 0 6px">Nhật ký lệnh điều khiển</div>
-      ${auditLog.length?auditLog.slice(0,14).map(l=>`<div class="logline"><em>${l.t.toLocaleTimeString('vi-VN')}</em> · ${l.txt}</div>`).join(''):'<p class="muted">Chưa có lệnh.</p>'}</div>`;
-  $('#alCount').textContent=un;
-  $('#alBody').querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openDev(devices.find(x=>x.id===b.dataset.id)));
-  $('#alBody').querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{ view.alFilter=b.dataset.f; renderAlarms(); });
-  $('#alBody').querySelectorAll('[data-ackopen]').forEach(b=>b.onclick=()=>{
-    if(OPS.role==='viewer'){ toast('Vai trò Khách không xác nhận được'); return; }
-    view.ackFor=b.dataset.ackopen; renderAlarms(); const i=$('#ackNote'); if(i) i.focus(); });
-  $('#alBody').querySelectorAll('[data-ackcancel]').forEach(b=>b.onclick=()=>{ view.ackFor=null; renderAlarms(); });
-  $('#alBody').querySelectorAll('[data-ackdo]').forEach(b=>b.onclick=()=>{ const n=$('#ackNote'); ackAlarm(b.dataset.ackdo, n?n.value.trim():''); });
-  $('#alBody').querySelectorAll('[data-shelve]').forEach(b=>b.onclick=()=>shelve(b.dataset.shelve));
+      ${auditLog.length?auditLog.slice(0,10).map(l=>`<div class="logline"><em>${l.t.toLocaleTimeString('vi-VN')}</em> · ${l.txt}</div>`).join(''):'<p class="muted">Chưa có lệnh.</p>'}</div>`;
+  const B=$('#alBody');
+  B.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openDev(devices.find(x=>x.id===b.dataset.id)));
+  B.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{ view.alFilter=b.dataset.f; renderAlarms(); });
+  B.querySelectorAll('[data-ackopen]').forEach(b=>b.onclick=()=>{
+    if(OPS.role==='viewer'){ toast('Vai trò Khách không nhận xử lý được'); return; }
+    view.ackFor=b.dataset.ackopen; view.shelveFor=null; renderAlarms(); const i=$('#ackNote'); if(i) i.focus(); });
+  B.querySelectorAll('[data-ackcancel]').forEach(b=>b.onclick=()=>{ view.ackFor=null; renderAlarms(); });
+  B.querySelectorAll('[data-ackdo]').forEach(b=>b.onclick=()=>{ const n=$('#ackNote');
+    const aa=AL.ack(b.dataset.ackdo, ROLE_VN[OPS.role], n?n.value.trim():'');
+    if(aa) logSite('alarm.ack', {tag:aa.dev.tag, msg:aa.msg, by:ROLE_VN[OPS.role], note:n?n.value.trim():''});
+    view.ackFor=null; renderAlarms(); renderHeader(); toast('Đã nhận xử lý'); });
+  B.querySelectorAll('[data-shvopen]').forEach(b=>b.onclick=()=>{
+    if(OPS.role==='viewer'){ toast('Vai trò Khách không tạm ẩn được'); return; }
+    view.shelveFor=b.dataset.shvopen; view.ackFor=null; renderAlarms(); const i=$('#shvWhy'); if(i) i.focus(); });
+  B.querySelectorAll('[data-shvcancel]').forEach(b=>b.onclick=()=>{ view.shelveFor=null; renderAlarms(); });
+  B.querySelectorAll('[data-shvdo]').forEach(b=>b.onclick=()=>{ const w=$('#shvWhy'), why=w?w.value.trim():'';
+    if(!why){ toast('Phải ghi lý do thì mới tạm ẩn được'); return; }
+    const sa=AL.shelve(b.dataset.shvdo, +b.dataset.h, why, ROLE_VN[OPS.role]);
+    if(sa) logSite('alarm.shelve', {tag:sa.dev.tag, hours:+b.dataset.h, why, by:ROLE_VN[OPS.role]});
+    view.shelveFor=null; renderAlarms(); renderHeader();
+    toast(`Đã tạm ẩn ${b.dataset.h} giờ, hết hạn sẽ báo lại`); });
+  B.querySelectorAll('[data-unshelve]').forEach(b=>b.onclick=()=>{ AL.unshelve(b.dataset.unshelve, ROLE_VN[OPS.role]); renderAlarms(); renderHeader(); });
+  B.querySelectorAll('[data-mkwo]').forEach(b=>b.onclick=()=>woFromAlarm(b.dataset.mkwo));
 }
-function ackAlarm(id, note){
-  if(OPS.role==='viewer'){ toast('Vai trò Khách không xác nhận được'); return; }
-  const d=devices.find(x=>x.id===id); view.ackFor=null;
-  alarms.filter(a=>a.dev===d&&!a.ack).forEach(a=>{ a.ack=true; a.ackNote=note||''; a.ackBy=ROLE_VN[OPS.role]; });
-  logCmd(`${d.tag} · xác nhận cảnh báo${note?' · '+note:''}`); renderAlarms(); renderHeader(); toast('Đã xác nhận');
-}
-function shelve(id){
-  if(OPS.role==='viewer'){ toast('Vai trò Khách không tạm ẩn được'); return; }
-  const d=devices.find(x=>x.id===id); d.shelveUntil=Date.now()+4*3600*1000;
-  logCmd(`${d.tag} · tạm ẩn cảnh báo 4 giờ`); renderAlarms(); toast('Đã tạm ẩn 4 giờ, hết hạn sẽ báo lại');
+function woFromAlarm(key){
+  if(OPS.role==='viewer'){ toast('Vai trò Khách không tạo phiếu được'); return; }
+  const a=AL.get(key); if(!a) return;
+  const fl=floorOf(a.dev.floor), r=fl.rooms[a.dev.room];
+  const w=WK.create({title:a.msg, dev:a.dev, src:'alarm', prio:a.prio, by:ROLE_VN[OPS.role],
+    detail:`${a.dev.tag} · ${fl.name}${r?' · '+r.n:''} · phát sinh ${new Date(a.firstAt).toLocaleString('vi-VN')}`});
+  a.wo=w.no; logCmd(`Tạo phiếu ${w.no} từ cảnh báo ${a.dev.tag}`);
+  logSite('wo.create', {no:w.no, title:w.title, tag:a.dev.tag, src:'alarm', by:ROLE_VN[OPS.role]});
+  renderAlarms(); toast('Đã tạo '+w.no+', xem ở Vận hành › Công việc');
 }
 function renderHeader(){
   const on=devices.filter(d=>!d.offline).length;
@@ -397,7 +456,9 @@ function renderHeader(){
   $('#kWarn').textContent=devices.filter(d=>d.status==='warn').length;
   $('#kAlarm').textContent=devices.filter(d=>['alarm','off'].includes(d.status)).length;
   $('#kPower').textContent=Math.round(devices.filter(d=>d.t==='PANEL').reduce((s,d)=>s+d.st.amp*.38*1.73,0));
-  const n=alarms.filter(a=>!a.ack&&!(a.dev.shelveUntil&&Date.now()<a.dev.shelveUntil)).length;
+  const hs=window.HLT&&HLT.last(); const kh=$('#kHealth');
+  if(kh&&hs){ const p=HLT.score(hs); kh.textContent=p; kh.parentElement.className='kpi '+HLT.grade(p)[1]; }
+  const n=window.AL?AL.stats().un:0;
   const b=$('#tabBadge'); b.hidden=!n; b.textContent=n;
   const age=Math.round((Date.now()-OPS.lastTick)/1000);
   const st=$('#connState'); if(st){ st.textContent = OPS.connected?`cập nhật ${age}s trước`:'MẤT KẾT NỐI'; st.className='conn '+(OPS.connected?(age>20?'stale':'ok'):'bad'); }
@@ -483,30 +544,231 @@ function cmd(d,c){
   else if(c.startsWith('fan:')){ const v=c.slice(4); d.st.run=v!=='Tắt'; if(d.st.run) d.st.fan=v; logCmd(`${d.tag} · quạt ${v}`); toast('Đã gửi lệnh quạt '+v); }
   else if(c==='fanon'){ d.st.run=true; d.st.pa=45; logCmd(`${d.tag} · chạy quạt`); toast('Đã gửi lệnh chạy'); }
   else if(c==='fanoff'){ d.st.run=false; logCmd(`${d.tag} · dừng quạt`); toast('Đã gửi lệnh dừng'); }
-  else if(c==='ack'){ const a=alarms.find(x=>x.dev===d); if(a) a.ack=true; logCmd(`${d.tag} · xác nhận cảnh báo`); toast('Đã xác nhận'); }
+  else if(c==='ack'){ const n=AL.ackAllOf(d, ROLE_VN[OPS.role], ''); logCmd(`${d.tag} · nhận xử lý ${n} cảnh báo`); renderHeader(); toast(n?`Đã nhận ${n} cảnh báo`:'Thiết bị này không có cảnh báo nào đang mở'); }
   d.status=statusOf(d); refresh(); renderSheet(d);
 }
 // ---------- hiệu năng ----------
+const OPSUB=[['health','Sức khoẻ'],['energy','Năng lượng'],['work','Công việc'],['occ','Chiếm dụng'],['set','Cài đặt']];
 function renderOps(){
-  const open=inSchedule(), now=new Date();
-  const svcFCU = devices.filter(d=>d.t==='FCU').sort((a,b)=>b.st.filter-a.st.filter).slice(0,6);
-  const runners = devices.filter(d=>d.st.hours!=null).sort((a,b)=>b.st.hours-a.st.hours).slice(0,5);
-  const kwNow = Math.round(devices.filter(d=>d.t==='PANEL').reduce((s,d)=>s+d.st.amp*.38*1.73,0));
-  const byFloor = BLD.floors.map(f=>({f, kw: devices.filter(d=>d.floor===f.id&&d.t==='PANEL').reduce((s,d)=>s+d.st.amp*.38*1.73,0)}))
-    .filter(x=>x.kw>0).sort((a,b)=>b.kw-a.kw).slice(0,4);
-  $('#opBody').innerHTML = `
-  ${(()=>{ if(!window.FDD) return '';
-    const T=FDD.all().filter(f=>f.ticket).sort((x,y)=>(x.ticket.done?1:0)-(y.ticket.done?1:0)||x.rule.sev-y.rule.sev);
-    return `<div class="card"><div class="ch">Phiếu công việc (${T.filter(t=>!t.ticket.done).length} đang mở)</div>
-      ${T.length? T.map(f=>`<button class="wo ${f.ticket.done?'done':''}" data-wo="${f.id}">
-          <b class="mono">${f.ticket.no}</b>
-          <span>${f.rule.name}<em>${f.dev.tag} · ${floorOf(f.dev.floor).name} · giao ${f.ticket.who}</em></span>
-          <i>${f.ticket.done?'✓ đóng':'đang mở'}</i></button>`).join('')
-        : '<p class="muted">Chưa có phiếu nào. Mở thẻ Chẩn đoán để tạo phiếu từ lỗi phát hiện được.</p>'}</div>`; })()}
+  const nav=`<div class="subnav">${OPSUB.map(([k,v])=>{
+    let n=0;
+    if(k==='work'&&window.WK) n=WK.stats().open;
+    if(k==='health'&&window.HLT){ const h=HLT.last(); n=h?h.off.length+h.stale.length+h.lowBatt:0; }
+    return `<button data-os="${k}" class="${view.opSub===k?'on':''}">${v}${n?`<i>${n}</i>`:''}</button>`;}).join('')}</div>`;
+  const body = view.opSub==='energy'?opEnergy(): view.opSub==='work'?opWork():
+               view.opSub==='occ'?opOcc(): view.opSub==='set'?opSet(): opHealth();
+  $('#opBody').innerHTML = nav + body;
+  const B=$('#opBody');
+  B.querySelectorAll('[data-os]').forEach(x=>x.onclick=()=>{ view.opSub=x.dataset.os; renderOps(); });
+  B.querySelectorAll('[data-id]').forEach(x=>x.onclick=()=>openDev(devices.find(y=>y.id===x.dataset.id)));
+  B.querySelectorAll('[data-floor]').forEach(x=>x.onclick=()=>openFloor(x.dataset.floor));
+  const ef=B.querySelector('#enFind'); if(ef) ef.onclick=()=>{ view.fddCat='waste'; setTab('fdd');
+    toast(inSchedule()?'Đang trong giờ vận hành, phần ngoài giờ xem lại sau 18:00':'Đang lọc nhóm lãng phí năng lượng'); };
+  ({health:bindHealth, energy:()=>{}, work:bindWork, occ:bindOcc, set:bindSet}[view.opSub]||(()=>{}))(B);
+}
+
+// ---------- Vận hành › Sức khoẻ hệ thống ----------
+function opHealth(){
+  const h=HLT.scan(devices, floorOf), p=HLT.score(h), [g,cls]=HLT.grade(p);
+  const row=(d,right,sub)=>`<button class="item" data-id="${d.id}">
+    <span class="dot" style="background:${COL[d.status]}"></span>
+    <span class="t"><b>${d.tag}</b><span>${floorOf(d.floor).name}${sub?' · '+sub:''}</span></span>
+    <span class="v">${right}</span></button>`;
+  return `
+  <div class="card"><div class="ch">Điểm sức khoẻ hệ BMS</div>
+    <div class="bigrow"><div><b class="${cls==='ok'?'cok':cls==='warn'?'cwarn':'calarm'}">${p}</b><span>${g}</span></div>
+      <div><b>${h.avail.toFixed(1)}%</b><span>điểm về đủ</span></div>
+      <div><b>${h.scanMs}</b><span>ms mỗi vòng quét</span></div></div>
+    <p class="muted">Điểm trừ theo: mất kết nối, số liệu đứng yên, pin yếu, bộ điều khiển quá tải.</p></div>
+
+  <div class="card"><div class="ch">Trục truyền thông</div>
+    ${h.trunks.map(t=>`<div class="hbar"><span>Trục ${t.id}</span>
+      <div class="bar"><i style="width:${t.avail.toFixed(0)}%;background:${t.off?'var(--warn)':'var(--ok)'}"></i></div>
+      <b class="mono">${t.total-t.off}/${t.total}</b></div>`).join('')}
+    <p class="muted">Tải trục: ${h.trunks.map(t=>`trục ${t.id} ${t.load.toFixed(0)}%`).join(', ')}. Trên 80% nên tách trục mới.</p></div>
+
+  <div class="card"><div class="ch">Điểm mất kết nối (${h.off.length})</div>
+    ${h.off.length?`<div class="list">${h.off.slice(0,8).map(x=>row(x.d,'mất KN', 'trục '+floorOf(x.d.floor).trunk)).join('')}</div>`
+      :'<p class="muted">Tất cả điểm đang về đủ.</p>'}</div>
+
+  <div class="card"><div class="ch">Số liệu đứng yên (${h.stale.length})</div>
+    <p class="muted">Điểm vẫn trả lời nhưng giá trị không đổi qua ${HLT.STALE_N} lần đọc. Đây là loại hỏng nguy hiểm nhất vì màn hình vẫn xanh.</p>
+    ${h.stale.length?`<div class="list">${h.stale.slice(0,8).map(x=>row(x.d, x.mins+' phút', 'đứng yên')).join('')}</div>`
+      :'<p class="muted">Không có điểm nào đứng yên.</p>'}</div>
+
+  <div class="card"><div class="ch">Pin cảm biến không dây (${h.batt.length} cảm biến)</div>
+    ${h.batt.slice(0,8).map(x=>`<div class="hbar"><span class="mono" style="font-size:11px">${x.d.tag}</span>
+      <div class="bar"><i style="width:${x.pct}%;background:${x.pct<15?'var(--alarm)':x.pct<25?'var(--warn)':'var(--ok)'}"></i></div>
+      <b class="mono">${x.pct}% · ${x.days>365?'>1 năm':x.days+' ngày'}</b></div>`).join('')}
+    ${h.lowBatt?`<button class="btn full" id="battWo">Tạo phiếu thay pin cho ${h.lowBatt} cảm biến dưới 25%</button>`:''}</div>`;
+}
+function bindHealth(B){ const b=B.querySelector('#battWo'); if(b) b.onclick=()=>{
+  if(OPS.role==='viewer'){ toast('Vai trò Khách không tạo phiếu được'); return; }
+  const h=HLT.last(), low=h.batt.filter(x=>x.pct<25);
+  low.forEach(x=>WK.create({title:'Thay pin cảm biến không dây', dev:x.d, src:'health', prio:3,
+    by:ROLE_VN[OPS.role], who:'Anh Hải (điều khiển)', detail:`Pin còn ${x.pct}%, ước tính hết sau ${x.days} ngày`}));
+  logCmd(`Tạo ${low.length} phiếu thay pin cảm biến`); view.opSub='work'; renderOps(); toast(`Đã tạo ${low.length} phiếu`); }; }
+
+// ---------- Vận hành › Năng lượng ----------
+function opEnergy(){
+  const e=EN.stats(); if(!e) return '<p class="muted">Đang gom dữ liệu…</p>';
+  const over=e.deltaNow>7, sign=v=>(v>0?'+':'')+v.toFixed(0);
+  return `
+  <div class="card"><div class="ch">So với mức đáng lẽ phải dùng</div>
+    <div class="bigrow">
+      <div><b class="${over?'cwarn':'cok'}">${e.cur.kw.toFixed(0)}</b><span>kW hiện tại</span></div>
+      <div><b>${e.cur.base.toFixed(0)}</b><span>kW mức chuẩn</span></div>
+      <div><b class="${over?'cwarn':'cok'}">${sign(e.deltaNow)}%</b><span>chênh lệch</span></div></div>
+    <p class="muted">Mức chuẩn tính theo nhiệt độ ngoài trời ${e.oat}°C và tỉ lệ lấp đầy ${e.occ}% của khung giờ này, không phải so với hôm qua.</p></div>
+
+  <div class="card"><div class="ch">Hôm nay</div>
+    ${EN.chartSVG()}
+    <div class="elg"><span><i style="background:#27C8D6"></i>trong giờ</span><span><i style="background:#F5B23C"></i>vượt chuẩn</span><span><i style="background:#FF5A5A"></i>ngoài giờ</span><span><i class="dash"></i>mức chuẩn</span></div>
+    <div class="row2"><span>Điện năng đã dùng</span><b class="mono">${e.kwh.toLocaleString('vi-VN')} kWh</b></div>
+    <div class="row2"><span>Mức chuẩn tương ứng</span><b class="mono">${e.base.toLocaleString('vi-VN')} kWh</b></div>
+    <div class="row2"><span>Phần vượt</span><b class="mono" style="color:${e.excess>0?'var(--warn)':'var(--ok)'}">${sign(e.excess)} kWh · ${(e.excessVnd/1000).toFixed(0)} nghìn đ</b></div></div>
+
+  <div class="card"><div class="ch">Điện tiêu ngoài giờ</div>
+    <div class="bigrow"><div><b class="${e.offShare>30?'calarm':e.offShare>20?'cwarn':'cok'}">${e.offShare.toFixed(0)}%</b><span>tổng điện cả ngày</span></div>
+      <div><b>${e.offKwh}</b><span>kWh ngoài giờ</span></div>
+      <div><b>${(e.offKwh*EN.GIA/1000).toFixed(0)}</b><span>nghìn đồng</span></div></div>
+    <p class="muted">Tính từ 0h đến bây giờ, nên buổi sáng tỉ lệ này luôn cao rồi giảm dần trong ngày. Toà nhà văn phòng chạy tốt thường dưới 20% vì ban đêm vẫn còn thang máy, bơm và chiếu sáng công cộng. Trên 30% gần như chắc chắn có thiết bị quên tắt hoặc lịch sai.</p>
+    <button class="btn full" id="enFind">Tìm thiết bị đang chạy ngoài giờ</button></div>
+
+  <div class="card"><div class="ch">Phụ tải theo tầng</div>
+    ${BLD.floors.map(f=>({f,kw:devices.filter(d=>d.floor===f.id&&d.t==='PANEL').reduce((s,d)=>s+d.st.amp*.38*1.73,0)}))
+      .filter(x=>x.kw>0).sort((a,b)=>b.kw-a.kw).slice(0,5)
+      .map(x=>`<button class="frow" data-floor="${x.f.id}"><span class="dot" style="background:var(--accent)"></span>
+        <b>${x.f.name}</b><span class="fm">${Math.round(x.kw)} kW</span><i>mở →</i></button>`).join('')}</div>`;
+}
+
+// ---------- Vận hành › Công việc ----------
+function opWork(){
+  const st=WK.stats(), L=WK.list(view.wkFilter), pm=WK.due(devices);
+  const chip=(k,lb,n)=>`<button class="fchip ${view.wkFilter===k?'on':''}" data-wf="${k}">${lb}${n!=null?` <i>${n}</i>`:''}</button>`;
+  return `
+  <div class="card"><div class="ch">Phiếu công việc</div>
+    <div class="bigrow"><div><b>${st.open}</b><span>đang mở</span></div>
+      <div><b class="${st.late?'calarm':''}">${st.late}</b><span>quá hạn</span></div>
+      <div><b class="${st.unassigned?'cwarn':''}">${st.unassigned}</b><span>chưa giao</span></div></div></div>
+  <div class="fchips">${chip('open','Đang mở',st.open)}${chip('unassigned','Chưa giao',st.unassigned)}${chip('late','Quá hạn',st.late)}${chip('done','Đã xong',st.done)}</div>
+  ${L.length? L.map(w=>`<div class="fcard sev${w.prio} ${w.state==='done'?'wdone':''}">
+      <div class="fh"><span class="pbadge p${w.prio}">P${w.prio}</span><b>${w.title}</b>
+        <span class="waste mono">${w.no}</span></div>
+      <div class="floc">${w.dev?w.dev.tag+' · '+floorOf(w.dev.floor).name:'—'} · ${({alarm:'từ cảnh báo',fdd:'từ chẩn đoán',pm:'bảo trì định kỳ',health:'sức khoẻ hệ thống'})[w.src]||'thủ công'}</div>
+      ${w.detail?`<div class="fev">${w.detail}</div>`:''}
+      <div class="altags"><span class="atag ${w.who==='Chưa giao'?'rep':'ok'}">${w.who}</span>
+        <span class="atag ${WK.overdue(w)?'esc':''}">hạn ${w.due.toLocaleString('vi-VN',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'})}${WK.overdue(w)?' · quá hạn':''}</span>
+        <span class="atag">${WK.ST_VN[w.state]}</span></div>
+      <div class="alacts">
+        ${w.state!=='done'?`<button class="mini" data-asg="${w.no}">Giao việc</button>`:''}
+        ${w.state==='new'?`<button class="mini" data-stw="${w.no}" data-s="doing">Bắt đầu</button>`:''}
+        ${w.state!=='done'?`<button class="mini on" data-stw="${w.no}" data-s="done">Báo xong</button>`:`<button class="mini" data-stw="${w.no}" data-s="doing">Mở lại</button>`}
+        ${w.dev?`<button class="mini" data-id="${w.dev.id}">Mở thiết bị</button>`:''}</div>
+      ${view.wkFor===w.no?`<div class="ackbox wrap">${WK.TEAM.map(t=>`<button class="mini" data-asgdo="${w.no}" data-who="${t}">${t}</button>`).join('')}</div>`:''}
+      <div class="wlog">${w.log.slice(0,3).map(l=>`${l.t.toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})} · ${l.txt}`).join('<br>')}</div>
+    </div>`).join('')
+    : '<p class="muted">Không có phiếu nào trong nhóm này.</p>'}
+
+  <div class="card"><div class="ch">Bảo trì theo giờ chạy (${pm.length} thiết bị sắp tới hạn)</div>
+    <p class="muted">Tính theo giờ chạy tích luỹ thật của từng máy, không theo lịch cố định. Máy chạy ít thì chưa cần đụng vào.</p>
+    ${pm.slice(0,8).map(x=>`<div class="pmrow">
+      <div class="pmh"><b>${x.d.tag}</b><span class="mono">${x.d.st.hours.toLocaleString('vi-VN')} h</span></div>
+      <div class="bar"><i style="width:${Math.min(100,x.pct)}%;background:${x.pct>95?'var(--alarm)':'var(--warn)'}"></i></div>
+      <div class="pmf"><span>${x.work} · mỗi ${x.every.toLocaleString('vi-VN')} h</span>
+        <span>${x.left<=0?'đã quá hạn':`còn ${x.left} h ≈ ${x.days} ngày`}</span></div>
+      ${x.hasWo?'<span class="atag ok">đã có phiếu</span>':`<button class="mini" data-pm="${x.d.id}" data-w="${encodeURIComponent(x.work)}">Tạo phiếu bảo trì</button>`}
+    </div>`).join('')}</div>`;
+}
+function bindWork(B){
+  B.querySelectorAll('[data-wf]').forEach(x=>x.onclick=()=>{ view.wkFilter=x.dataset.wf; renderOps(); });
+  B.querySelectorAll('[data-asg]').forEach(x=>x.onclick=()=>{ view.wkFor=view.wkFor===x.dataset.asg?null:x.dataset.asg; renderOps(); });
+  B.querySelectorAll('[data-asgdo]').forEach(x=>x.onclick=()=>{ WK.assign(x.dataset.asgdo, x.dataset.who, ROLE_VN[OPS.role]);
+    view.wkFor=null; logCmd(`${x.dataset.asgdo} · giao cho ${x.dataset.who}`); renderOps(); toast('Đã giao việc'); });
+  B.querySelectorAll('[data-stw]').forEach(x=>x.onclick=()=>{
+    if(OPS.role==='viewer'){ toast('Vai trò Khách không đổi được trạng thái phiếu'); return; }
+    WK.setState(x.dataset.stw, x.dataset.s, ROLE_VN[OPS.role]); logCmd(`${x.dataset.stw} · ${WK.ST_VN[x.dataset.s]}`); renderOps(); });
+  B.querySelectorAll('[data-pm]').forEach(x=>x.onclick=()=>{
+    if(OPS.role==='viewer'){ toast('Vai trò Khách không tạo phiếu được'); return; }
+    const d=devices.find(y=>y.id===x.dataset.pm);
+    const w=WK.create({title:decodeURIComponent(x.dataset.w), dev:d, src:'pm', prio:3, by:ROLE_VN[OPS.role],
+      detail:`Giờ chạy tích luỹ ${d.st.hours.toLocaleString('vi-VN')} h`});
+    logCmd(`Tạo phiếu bảo trì ${w.no} · ${d.tag}`); renderOps(); toast('Đã tạo '+w.no); });
+}
+
+// ---------- Vận hành › Chiếm dụng ----------
+function opOcc(){
+  const o=OCC.stats(), L=OCC.list();
+  const now=new Date();
+  return `
+  <div class="card"><div class="ch">Điều khiển theo chiếm dụng</div>
+    <div class="row2"><span>Trạng thái</span>
+      <button class="mini ${OCC.enabled?'on':''}" id="occTog">${OCC.enabled?'Đang bật':'Đang tắt'}</button></div>
+    <div class="bigrow"><div><b>${o.occupied}/${o.rooms}</b><span>phòng có người</span></div>
+      <div><b class="cwarn">${o.setback}</b><span>phòng đang lùi cài đặt</span></div>
+      <div><b class="cok">${o.released}</b><span>lịch đặt đã trả lại</span></div></div>
+    <p class="muted">Phòng đặt mà quá ${OCC.NO_SHOW_MIN} phút không có người thì trả lại lịch. Phòng trống quá ${OCC.VACANT_MIN} phút thì lùi cài đặt +${OCC.SETBACK}°C. Số người suy ra từ CO₂ nên không cần gắn thêm cảm biến hiện diện.</p>
+    <div class="row2"><span>Đã tiết kiệm hôm nay</span><b class="mono cok">${o.kwh} kWh · ${(o.vnd/1000).toFixed(0)} nghìn đ</b></div>
+    <div class="row2"><span>Quy ra mỗi tháng</span><b class="mono cok">${(o.monthVnd/1e6).toFixed(1)} triệu đ</b></div></div>
+
+  <div class="card"><div class="ch">Phòng họp</div>
+    ${L.filter(x=>x.meeting).length? L.filter(x=>x.meeting).slice(0,10).map(x=>{
+      const b=x.book, live=b&&!b.released&&b.start<=now&&b.end>now;
+      return `<div class="orow">
+        <div class="oh"><b>${floorOf(x.fid).name} · ${x.name}</b>
+          <span class="omode ${x.mode}">${x.mode==='setback'?'lùi cài đặt':x.mode==='hold'?'giữ theo lịch':'bình thường'}</span></div>
+        <div class="floc">${x.people} người · ${Math.round(x.dev.st.co2)} ppm · ${x.dev.st.temp.toFixed(1)}°C ↹ ${x.dev.st.sp.toFixed(1)}°C</div>
+        ${b?`<div class="obook ${b.released?'rel':live?'live':''}">${b.released?'✓ đã trả lại':live?'đang diễn ra':'sắp tới'} · ${b.title} · ${b.who} · ${b.start.toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}–${b.end.toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}</div>`
+          :'<div class="floc">không có lịch đặt</div>'}
+        <button class="mini" data-id="${x.dev.id}">Mở cảm biến</button></div>`; }).join('')
+      : '<p class="muted">Tầng này chưa có phòng họp nào trong danh sách.</p>'}</div>
+
+  <div class="card"><div class="ch">Việc hệ thống đã tự làm</div>
+    ${OCC.events.length? OCC.events.slice(0,12).map(e=>`<div class="logline"><em>${e.t.toLocaleTimeString('vi-VN')} · ${floorOf(e.room.fid).name} ${e.room.name}</em><br>${e.txt}</div>`).join('')
+      : '<p class="muted">Chưa có hành động nào.</p>'}</div>`;
+}
+function bindOcc(B){ const t=B.querySelector('#occTog'); if(t) t.onclick=()=>{
+  if(!canCmd('tech')){ toast('Chỉ vai trò Kỹ thuật bật tắt được chức năng này'); return; }
+  OCC.enabled=!OCC.enabled; logCmd('Điều khiển theo chiếm dụng · '+(OCC.enabled?'bật':'tắt'));
+  if(!OCC.enabled) devices.forEach(d=>{ if(d.setback) d.setback=0; });
+  renderOps(); toast(OCC.enabled?'Đã bật':'Đã tắt, trả mọi phòng về cài đặt gốc'); }; }
+
+// ---------- Vận hành › Cài đặt ----------
+function opSet(){
+  const open=inSchedule();
+  return `
+  ${(()=>{ if(!window.SITE) return ''; const c=SITE.cfg, ss=SITE.stats();
+    return `<div class="card"><div class="ch">Nhận diện toà nhà</div>
+    <p class="muted">Một bộ phần mềm dùng cho nhiều toà nhà. Phần dưới đây là những gì đổi theo từng công trình, kỹ thuật viên đặt lúc lắp đặt bằng file <b class="mono">site.json</b>, không phải sửa mã nguồn.</p>
+    <label class="fld"><span>Tên toà nhà</span><input id="stName" value="${c.building.name}"></label>
+    <label class="fld"><span>Đơn vị quản lý</span><input id="stOwner" value="${c.owner.name||''}" placeholder="Ban quản lý toà nhà"></label>
+    <label class="fld"><span>Mã công trình</span><input id="stCode" value="${c.building.code||''}" placeholder="TGSC-01"></label>
+    <label class="fld"><span>Hotline kỹ thuật</span><input id="stPhone" value="${c.owner.hotline||''}" placeholder="0905 680 188"></label>
+    <div class="fld"><span>Logo</span><div class="logorow">
+      <span class="lgprev" id="stPrev">${c.owner.logo?`<img src="${c.owner.logo}" alt="">`:(c.theme.logoText||'3A')}</span>
+      <input type="file" id="stLogo" accept="image/png,image/jpeg,image/svg+xml" hidden>
+      <button class="mini" id="stLogoPick">Chọn ảnh</button>
+      ${c.owner.logo?'<button class="mini" id="stLogoDel">Bỏ logo</button>':'<input id="stInit" maxlength="3" placeholder="3A" value="'+(c.theme.logoText||'')+'" class="initin">'}
+    </div></div>
+    <div class="fld"><span>Màu chủ đạo</span><div class="swrow">
+      ${['#27C8D6','#4F8CFF','#2BD37A','#F5B23C','#C77DFF','#FF7A59'].map(x=>`<button class="sw ${c.theme.accent===x?'on':''}" data-sw="${x}" style="background:${x}"></button>`).join('')}</div></div>
+    <label class="fld"><span>Giá điện (đ/kWh)</span><input id="stPrice" type="number" value="${c.locale.kwhPrice}"></label>
+    <div class="alacts"><button class="mini on" id="stSave">Lưu cấu hình</button><button class="mini" id="stReset">Về mặc định</button></div></div>
+
+  <div class="card"><div class="ch">Nơi dữ liệu được lưu</div>
+    <div class="row2"><span>Đang lưu tại</span><b style="color:var(--ok)">${ss.mode}</b></div>
+    <div class="row2"><span>Máy chủ tại toà nhà</span><b class="mono">${ss.api||'chưa cấu hình'}</b></div>
+    <div class="row2"><span>Bản ghi đã lưu</span><b class="mono">${ss.records}</b></div>
+    <div class="row2"><span>Đẩy lên internet</span><b class="mono">${ss.cloud?ss.cloud:'tắt'} · ${ss.push==='auto'?'tự động':'thủ công'}</b></div>
+    <label class="fld"><span>Địa chỉ máy chủ đặt tại toà nhà</span><input id="stApi" value="${ss.api}" placeholder="http://192.168.1.50:8080/api"></label>
+    <label class="fld"><span>Điểm đẩy lên internet (tuỳ chọn)</span><input id="stCloud" value="${ss.cloud}" placeholder="https://bms.toanha.vn/ingest"></label>
+    <div class="alacts"><button class="mini on" id="stStore">Lưu</button><button class="mini" id="stExport">Xuất dữ liệu JSON</button></div>
+    <p class="muted">Cơ sở dữ liệu nằm ở toà nhà. Hệ thống chỉ đẩy ra internet khi chủ đầu tư bật và chỉ tới địa chỉ do chủ đầu tư chỉ định. Không có đường nào tự gửi dữ liệu về máy chủ của đơn vị lắp đặt. Mất mạng thì phần mềm vẫn chạy và vẫn ghi đủ, nối lại mạng mới đồng bộ.</p>
+    <p class="muted">Đơn vị lắp đặt: ${c.vendor.name}${c.vendor.support?' · hỗ trợ '+c.vendor.support:''}</p></div>`; })()}
 
   <div class="card"><div class="ch">Vai trò đang dùng</div>
     <div class="seg">${Object.entries(ROLE_VN).map(([k,v])=>`<button data-role="${k}" class="${OPS.role===k?'on':''}">${v}</button>`).join('')}</div>
-    <p class="muted">Khách chỉ xem. Vận hành được đặt nhiệt độ, bật tắt FCU, xác nhận cảnh báo. Kỹ thuật thêm quyền chạy/dừng quạt tăng áp, hút khói và đổi lịch.</p></div>
+    <p class="muted">Khách chỉ xem. Vận hành được đặt nhiệt độ, bật tắt FCU, nhận xử lý cảnh báo. Kỹ thuật thêm quyền chạy/dừng quạt tăng áp, hút khói và đổi lịch.</p></div>
 
   <div class="card"><div class="ch">Lịch vận hành</div>
     <div class="row2"><span>Giờ chạy</span><b class="mono">${OPS.sched.on} – ${OPS.sched.off}</b></div>
@@ -517,21 +779,9 @@ function renderOps(){
       <button class="mini ${OPS.sched.sun?'on':''}" data-day="sun">Chủ nhật</button></span></div>
     <p class="muted">Ngoài giờ, cảnh báo nhiệt độ hạ xuống P3 để không làm phiền ca trực đêm.</p></div>
 
-  <div class="card"><div class="ch">Bảo trì sắp tới</div>
-    <div class="list">${svcFCU.map(d=>`<button class="item" data-id="${d.id}">
-      <span class="dot" style="background:${d.st.filter>85?COL.warn:COL.ok}"></span>
-      <span class="t"><b>${floorOf(d.floor).name} · ${(floorOf(d.floor).rooms[d.room]||{n:''}).n}</b><span>${d.tag}</span></span>
-      <span class="v">lọc ${Math.round(d.st.filter)}%</span></button>`).join('')}</div>
-    <div class="ch" style="margin-top:8px">Giờ chạy cao nhất</div>
-    <div class="list">${runners.map(d=>`<button class="item" data-id="${d.id}">
-      <span class="dot" style="background:${COL[d.status]}"></span>
-      <span class="t"><b>${d.tag}</b><span>${floorOf(d.floor).name}</span></span>
-      <span class="v">${d.st.hours.toLocaleString('vi-VN')} h</span></button>`).join('')}</div></div>
-
-  <div class="card"><div class="ch">Năng lượng</div>
-    <div class="row2"><span>Công suất tức thời</span><b class="mono">${kwNow} kW</b></div>
-    <div class="row2"><span>Điện năng từ khi mở app</span><b class="mono">${OPS.kwh.toFixed(2)} kWh</b></div>
-    ${byFloor.map(x=>`<div class="row2"><span>${x.f.name}</span><b class="mono">${Math.round(x.kw)} kW</b></div>`).join('')}</div>
+  <div class="card"><div class="ch">Ngưỡng leo thang cảnh báo</div>
+    ${[1,2,3].map(p=>`<div class="row2"><span>P${p} chưa ai nhận</span><b class="mono">${AL.ESC[p][0]}s → Trưởng ca · ${AL.ESC[p][1]}s → Quản lý</b></div>`).join('')}
+    <p class="muted">Đã rút ngắn còn giây để xem ngay trong bản mẫu. Ngoài thực tế đặt 5 phút và 15 phút cho P1. Rung được tính khi một điểm đổi trạng thái ${AL.CHATTER_N} lần trong cửa sổ theo dõi.</p></div>
 
   <div class="card"><div class="ch">Bàn giao ca</div>
     <textarea id="hoTxt" rows="2" placeholder="Ghi lại việc đã làm, việc còn dở, cảnh báo cần theo dõi…"></textarea>
@@ -543,17 +793,41 @@ function renderOps(){
     <button class="btn full" id="opOffline">${OPS.connected?'Mô phỏng mất kết nối':'Kết nối lại'}</button>
     <button class="btn full" id="opPerf">Đo khung hình 12 giây</button>
     <div id="benchOut"></div></div>`;
-  $('#opBody').querySelectorAll('[data-wo]').forEach(b=>b.onclick=()=>{ view.fddCat='all'; setTab('fdd');
-    const el=$('#fdBody').querySelector(`[data-close="${b.dataset.wo}"],[data-ticket="${b.dataset.wo}"]`);
-    if(el) el.closest('.fcard').scrollIntoView({block:'center'}); });
-  $('#opBody').querySelectorAll('[data-role]').forEach(b=>b.onclick=()=>{ OPS.role=b.dataset.role; renderOps(); renderHeader(); toast('Vai trò: '+ROLE_VN[OPS.role]); });
-  $('#opBody').querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{ if(!canCmd('tech')){toast('Chỉ vai trò Kỹ thuật đổi được lịch');return;} OPS.sched.mode=b.dataset.mode; logCmd('Lịch vận hành · '+b.textContent); renderOps(); });
-  $('#opBody').querySelectorAll('[data-day]').forEach(b=>b.onclick=()=>{ if(!canCmd('tech')){toast('Chỉ vai trò Kỹ thuật đổi được lịch');return;} const k=b.dataset.day; OPS.sched[k]=!OPS.sched[k]; logCmd('Lịch cuối tuần · '+b.textContent+(OPS.sched[k]?' bật':' tắt')); renderOps(); });
-  $('#opBody').querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openDev(devices.find(x=>x.id===b.dataset.id)));
-  $('#hoAdd').onclick=()=>{ const t=$('#hoTxt').value.trim(); if(!t) return;
-    OPS.handover.unshift({t:new Date(), who:ROLE_VN[OPS.role], txt:t}); renderOps(); toast('Đã ghi sổ bàn giao'); };
-  $('#opOffline').onclick=()=>{ OPS.connected=!OPS.connected; renderOps(); renderHeader(); toast(OPS.connected?'Đã kết nối lại':'Đang mô phỏng mất kết nối, dữ liệu đứng yên'); };
-  $('#opPerf').onclick=runBench;
+}
+function bindSet(B){
+  const q=i=>B.querySelector(i), val=i=>{const e=q(i); return e?e.value.trim():'';};
+  if(q('#stSave')){
+    q('#stSave').onclick=()=>{ if(!canCmd('tech')){ toast('Chỉ vai trò Kỹ thuật đổi được nhận diện toà nhà'); return; }
+      SITE.save({ building:{name:val('#stName')||'Toà nhà chưa đặt tên', code:val('#stCode')},
+        owner:{name:val('#stOwner'), hotline:val('#stPhone')},
+        theme:{logoText:(val('#stInit')||SITE.cfg.theme.logoText||'3A').toUpperCase()},
+        locale:{kwhPrice:+val('#stPrice')||3200} });
+      BLD.name=SITE.cfg.building.name; logCmd('Cập nhật nhận diện toà nhà');
+      logSite('site.config', {name:SITE.cfg.building.name, by:ROLE_VN[OPS.role]});
+      renderOps(); toast('Đã lưu, giao diện đã đổi theo toà nhà này'); };
+    q('#stReset').onclick=()=>{ SITE.reset(); setTimeout(()=>{ BLD.name=SITE.cfg.building.name; renderOps(); },200); toast('Đã trả về mặc định'); };
+    q('#stLogoPick').onclick=()=>q('#stLogo').click();
+    q('#stLogo').onchange=e=>{ const f=e.target.files[0]; if(!f) return;
+      if(f.size>260000){ toast('Ảnh quá nặng, chọn file dưới 250KB'); return; }
+      const r=new FileReader(); r.onload=()=>{ SITE.save({owner:{logo:r.result}}); renderOps(); toast('Đã đổi logo'); }; r.readAsDataURL(f); };
+    const dl=q('#stLogoDel'); if(dl) dl.onclick=()=>{ SITE.cfg.owner.logo=''; SITE.save({}); renderOps(); };
+    B.querySelectorAll('[data-sw]').forEach(x=>x.onclick=()=>{ SITE.save({theme:{accent:x.dataset.sw}}); renderOps(); });
+    q('#stStore').onclick=()=>{ if(!canCmd('tech')){ toast('Chỉ vai trò Kỹ thuật đổi được nơi lưu dữ liệu'); return; }
+      SITE.save({storage:{api:val('#stApi'), cloud:val('#stCloud')}}); renderOps();
+      toast(val('#stApi')?'Sẽ ghi lên máy chủ tại toà nhà':'Đang lưu trên máy này'); };
+    q('#stExport').onclick=()=>{ const b=new Blob([SITE.exportJSON()],{type:'application/json'});
+      const u=URL.createObjectURL(b), a=document.createElement('a');
+      a.href=u; a.download=(SITE.cfg.building.code||'bms')+'-data.json'; a.click(); URL.revokeObjectURL(u);
+      toast('Đã xuất file dữ liệu của toà nhà'); };
+  }
+  B.querySelectorAll('[data-role]').forEach(b=>b.onclick=()=>{ OPS.role=b.dataset.role; renderOps(); renderHeader(); toast('Vai trò: '+ROLE_VN[OPS.role]); });
+  B.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{ if(!canCmd('tech')){toast('Chỉ vai trò Kỹ thuật đổi được lịch');return;} OPS.sched.mode=b.dataset.mode; logCmd('Lịch vận hành · '+b.textContent); renderOps(); });
+  B.querySelectorAll('[data-day]').forEach(b=>b.onclick=()=>{ if(!canCmd('tech')){toast('Chỉ vai trò Kỹ thuật đổi được lịch');return;} const k=b.dataset.day; OPS.sched[k]=!OPS.sched[k]; logCmd('Lịch cuối tuần · '+b.textContent+(OPS.sched[k]?' bật':' tắt')); renderOps(); });
+  const ho=B.querySelector('#hoAdd'); if(ho) ho.onclick=()=>{ const t=$('#hoTxt').value.trim(); if(!t) return;
+    OPS.handover.unshift({t:new Date(), who:ROLE_VN[OPS.role], txt:t});
+    logSite('handover', {who:ROLE_VN[OPS.role], txt:t}); renderOps(); toast('Đã ghi sổ bàn giao'); };
+  const of_=B.querySelector('#opOffline'); if(of_) of_.onclick=()=>{ OPS.connected=!OPS.connected; renderOps(); renderHeader(); toast(OPS.connected?'Đã kết nối lại':'Đang mô phỏng mất kết nối, dữ liệu đứng yên'); };
+  const pf=B.querySelector('#opPerf'); if(pf) pf.onclick=runBench;
 }
 function renderPerf(){
   const info=renderer.info.render;
@@ -625,11 +899,16 @@ function renderFDD(){
   $('#fdBody').querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openDev(devices.find(x=>x.id===b.dataset.open)));
   $('#fdBody').querySelectorAll('[data-ticket]').forEach(b=>b.onclick=()=>{
     if(OPS.role==='viewer'){ toast('Vai trò Khách không tạo phiếu được'); return; }
-    const t=FDD.makeTicket(b.dataset.ticket, ROLE_VN[OPS.role]);
-    logCmd(`Tạo phiếu ${t.no} · ${FDD.get(b.dataset.ticket).rule.name} · ${FDD.get(b.dataset.ticket).dev.tag}`);
-    renderFDD(); toast('Đã tạo '+t.no); });
-  $('#fdBody').querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{ FDD.closeTicket(b.dataset.close);
-    logCmd(`Đóng phiếu ${FDD.get(b.dataset.close).ticket.no}`); renderFDD(); toast('Đã đóng phiếu'); });
+    const f=FDD.get(b.dataset.ticket); if(!f) return;
+    const fl=floorOf(f.dev.floor), r=fl.rooms[f.dev.room];
+    const w=WK.create({title:f.rule.name, dev:f.dev, src:'fdd', prio:f.rule.sev, by:ROLE_VN[OPS.role],
+      detail:`${f.ev}. ${f.rule.fix}${f.kwh?` Ước tính lãng phí ${FDD.vnd(f.kwh*FDD.GIA_DIEN)} đồng mỗi tháng.`:''}`});
+    f.ticket={no:w.no, at:w.at, who:w.who, done:false, wo:w};
+    logCmd(`Tạo phiếu ${w.no} · ${f.rule.name} · ${f.dev.tag}`);
+    renderFDD(); toast('Đã tạo '+w.no+', xem ở Vận hành › Công việc'); });
+  $('#fdBody').querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{ const f=FDD.get(b.dataset.close);
+    if(f&&f.ticket){ f.ticket.done=true; WK.setState(f.ticket.no,'done',ROLE_VN[OPS.role]); logCmd(`Đóng phiếu ${f.ticket.no}`); }
+    renderFDD(); toast('Đã đóng phiếu'); });
   $('#fdBody').querySelectorAll('[data-ig]').forEach(b=>b.onclick=()=>{ FDD.ignore(b.dataset.ig); renderFDD(); toast('Đã bỏ qua lỗi này'); });
   $('#fdBody').querySelectorAll('[data-unig]').forEach(b=>b.onclick=()=>{ FDD.unignore(b.dataset.unig); renderFDD(); });
   const b=$('#fdBadge'); if(b){ b.hidden=!st.n; b.textContent=st.n; }
@@ -656,7 +935,7 @@ qIn.addEventListener('input',()=>{
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') sBar.hidden=true; });
 
 // ---------- vòng cập nhật ----------
-function refresh(){ runFDD(); paint3D(); renderHeader(); renderRail();
+function refresh(){ runFDD(); if(window.HLT) HLT.scan(devices, floorOf); paint3D(); renderHeader(); renderRail();
   if(view.tab==='tower') renderTower();
   else if(view.tab==='floor') renderFloor();
   else if(view.tab==='alarms') renderAlarms();
@@ -664,6 +943,20 @@ function refresh(){ runFDD(); paint3D(); renderHeader(); renderRail();
   else if(view.tab==='fdd') renderFDD();
   if(view.tab==='floor' && view.sub==='3d' && window.F3 && F3.isBuilt()===view.floor) F3.paint();
   if(view.sel && $('#sheet').classList.contains('open')) renderSheet(view.sel); }
+EN.seed(h=>{ const dow=new Date().getDay();
+  if(dow===0&&!OPS.sched.sun) return false; if(dow===6&&!OPS.sched.sat) return false;
+  return h>=parseInt(OPS.sched.on) && h<parseInt(OPS.sched.off); });
+OCC.init(devices, floorOf);
+(()=>{ const pm=WK.due(devices)[0];
+  if(pm){ const w=WK.create({title:pm.work, dev:pm.d, src:'pm', prio:3, by:'Ca sáng',
+    detail:`Giờ chạy tích luỹ ${pm.d.st.hours.toLocaleString('vi-VN')} h`}); WK.assign(w.no,'Tổ vệ sinh','Ca sáng'); }
+  const dirty=devices.find(d=>d.t==='FCU'&&d.fault);
+  if(dirty){ const w=WK.create({title:'Chênh áp lọc gió cao, cần vệ sinh lọc', dev:dirty, src:'alarm', prio:2, by:'Ca đêm',
+    detail:'Ca đêm ghi nhận, chưa có vật tư thay thế'}); w.due=new Date(Date.now()-3*3600e3); }
+})();
+AL.onEscalate = (a,lv)=>{ toast(`Leo thang cấp ${lv}: ${a.dev.tag} · ${a.msg} → ${AL.ESC_TO[lv]}`);
+  logCmd(`Leo thang cấp ${lv} · ${a.dev.tag} · ${a.msg}`); };
+runModules(inSchedule()); HLT.scan(devices, floorOf);
 paint3D(); resize3D(); fit3D(); runFDD(); setTab('tower'); refresh();
 $('#loading').remove();
 setInterval(()=>{ if(document.hidden) return; tick(); refresh(); },1500);

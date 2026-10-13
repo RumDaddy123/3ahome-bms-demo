@@ -1,0 +1,19 @@
+{
+  "building": {
+    "name": "3AHOME Building Test",
+    "short": "TGSC",
+    "code": "TGSC-01",
+    "address": "Sơn Trà, Đà Nẵng"
+  },
+  "owner": {
+    "name": "Ban quản lý toà nhà",
+    "logo": "",
+    "hotline": "0905 680 188",
+    "email": "ngoc.pp@3ahome.vn"
+  },
+  "vendor": { "name": "3AHOME Vietnam", "site": "3ahome.vn", "support": "0905 680 188" },
+  "theme": { "accent": "#27C8D6", "logoText": "3A", "dark": true },
+  "locale": { "tz": "Asia/Ho_Chi_Minh", "currency": "VND", "kwhPrice": 3200, "workDays": 26 },
+  "ops": { "schedOn": "07:00", "schedOff": "18:00", "sat": true, "sun": false },
+  "storage": { "mode": "local", "api": "", "cloud": "", "push": "manual" }
+}

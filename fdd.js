@@ -47,10 +47,13 @@ const RULES = [
   { id:'sensor_drift', cat:'sensor', sev:3, hold:8,
     name:'Nghi cảm biến lệch chuẩn',
     when:d=>d.t==='TS',
+    // so sánh sai số so với chính cài đặt của từng phòng, nếu không thì phòng đang lùi cài đặt
+    // sẽ bị kết tội oan là cảm biến lệch chuẩn
     test:(d,S,C)=>{ const peers=C.peers(d); if(peers.length<3) return null;
-      const avg=peers.reduce((s,x)=>s+x.st.temp,0)/peers.length;
-      const dv=d.st.temp-avg;
-      return Math.abs(dv)>2.2 ? `Lệch ${dv>0?'+':''}${dv.toFixed(1)}°C so với trung bình ${avg.toFixed(1)}°C của ${peers.length} phòng cùng tầng` : null; },
+      const err=x=>x.st.temp-x.st.sp;
+      const avg=peers.reduce((s,x)=>s+err(x),0)/peers.length;
+      const dv=err(d)-avg;
+      return Math.abs(dv)>2.2 ? `Sai số ${dv>0?'+':''}${dv.toFixed(1)}°C so với mức chung ${avg>=0?'+':''}${avg.toFixed(1)}°C của ${peers.length} phòng cùng tầng` : null; },
     fix:'Đối chiếu bằng nhiệt kế cầm tay, hiệu chuẩn hoặc thay cảm biến.',
     kwh:()=>0.4*GIO_LV*NGAY_LV },
 
@@ -59,6 +62,7 @@ const RULES = [
     when:d=>d.t==='TS',
     test:(d,S,C)=>{ const e=d.st.temp-d.st.sp;
       if (Math.abs(e)<=2) return null;
+      if (d.spAt && Date.now()-d.spAt < 90e3) return null;   // vừa đổi cài đặt, chờ phòng đuổi kịp
       const pe=C.peers(d); if(pe.length>=3){ const avg=pe.reduce((s,x)=>s+x.st.temp,0)/pe.length;
         if (Math.abs(d.st.temp-avg)>2.2) return null; }   // nghi cảm biến, đã có luật riêng
       return `Chênh ${e>0?'+':''}${e.toFixed(1)}°C so với cài đặt ${d.st.sp.toFixed(1)}°C, kéo dài`; },
