@@ -196,6 +196,28 @@ svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono
 .subnav button{flex:none;border:1px solid var(--line-2);background:var(--panel-2);color:var(--ink-2);border-radius:999px;padding:7px 13px;font-size:12.5px;font-weight:600;min-height:36px}
 .subnav button.on{background:var(--accent);border-color:var(--accent);color:#06222A}
 .subnav i{font-style:normal;font-family:var(--mono);opacity:.75;margin-left:3px}
+.cmp{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--line);font-size:13px}
+.cmp:last-of-type{border-bottom:0}
+.cmp>span:first-child{color:var(--ink-2)}
+.dlt{font-size:11px;font-family:var(--mono);color:var(--muted);min-width:72px;text-align:right}
+.urow{display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-top:7px}
+.urow>div{flex:1;min-width:0} .urow b{font-size:13px;display:block}
+.urow em{font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+.urow.off{opacity:.55}
+.rolechip{cursor:pointer}
+.gate{position:fixed;inset:0;z-index:60;background:var(--bg);display:grid;place-items:center;padding:24px 18px;padding-top:calc(24px + var(--st));overflow-y:auto}
+.gate.lock{background:rgba(11,15,22,.97);backdrop-filter:blur(6px)}
+.gbox{width:100%;max-width:340px;display:grid;gap:2px;align-content:start}
+.glogo{width:52px;height:52px;border-radius:14px;background:var(--accent);color:#06222A;display:grid;place-items:center;font-weight:800;font-size:19px;margin-bottom:14px;overflow:hidden}
+.glogo img{width:100%;height:100%;object-fit:contain}
+.gbox h1{margin:0;font-size:21px;line-height:1.25}
+.gsub{margin:3px 0 14px;font-size:12.5px;color:var(--muted)}
+.gmsg{background:rgba(255,90,90,.12);border:1px solid rgba(255,90,90,.4);color:var(--alarm);border-radius:9px;padding:9px 11px;font-size:12.5px;margin-bottom:4px}
+.gchk{display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-2);margin:10px 0 12px}
+.gchk input{width:17px;height:17px;accent-color:var(--accent)}
+.gbox .btn{margin-top:6px}
+.gnote{font-size:11.5px;color:var(--muted);line-height:1.5;margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.gnote b{color:var(--ink-2);font-family:var(--mono);font-weight:600}
 .fld{display:grid;gap:4px;margin-top:8px}
 .fld>span{font-size:11.5px;color:var(--muted)}
 .fld input{background:var(--bg);border:1px solid var(--line-2);border-radius:9px;padding:10px 11px;min-height:42px;font-size:13.5px;width:100%}
@@ -225,6 +247,7 @@ svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono
 .atag.esc{color:var(--alarm);border-color:rgba(255,90,90,.45)}
 .atag.shv{color:#9AA6B8} .atag.ok{color:var(--ok);border-color:rgba(43,211,122,.35)}
 .alrow.esc{border-left-color:var(--alarm);box-shadow:inset 0 0 0 1px rgba(255,90,90,.18)}
+.escbar.note{background:rgba(39,200,214,.1);border-color:rgba(39,200,214,.4);color:var(--accent);font-weight:500;line-height:1.5}
 .escbar{background:rgba(255,90,90,.12);border:1px solid rgba(255,90,90,.4);color:var(--alarm);border-radius:10px;padding:9px 12px;font-size:12.5px;font-weight:600}
 .ackbox.wrap{flex-wrap:wrap}
 /* phòng và lịch đặt */
@@ -338,24 +361,103 @@ svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono
     <span class="pill ok" id="shPill" hidden>OK</span><button class="x" id="shClose" aria-label="Đóng">×</button></div>
   <div class="body" id="shBody"></div>
 </div>
+<div class="gate" id="gate" hidden>
+  <form class="gbox" id="gform" autocomplete="on">
+    <div class="glogo" id="gLogo">3A</div>
+    <h1 id="gName">—</h1>
+    <p class="gsub" id="gSub"></p>
+    <div class="gmsg" id="gMsg" hidden></div>
+    <label class="fld"><span>Tên đăng nhập</span><input id="gUser" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required></label>
+    <label class="fld"><span>Mật khẩu</span><input id="gPass" name="password" type="password" autocomplete="current-password" required></label>
+    <label class="gchk"><input type="checkbox" id="gKeep"> Giữ đăng nhập trên thiết bị này</label>
+    <button class="btn primary full" type="submit" id="gGo">Vào hệ thống</button>
+    <p class="gnote" id="gNote"></p>
+  </form>
+</div>
+
+<div class="gate lock" id="lock" hidden>
+  <form class="gbox" id="lform">
+    <div class="glogo">🔒</div>
+    <h1>Màn hình đã khoá</h1>
+    <p class="gsub" id="lWho"></p>
+    <div class="gmsg" id="lMsg" hidden></div>
+    <label class="fld"><span>Mật khẩu</span><input id="lPass" type="password" autocomplete="current-password" required></label>
+    <button class="btn primary full" type="submit">Mở khoá</button>
+    <button class="btn full" type="button" id="lOut">Đăng nhập bằng tài khoản khác</button>
+  </form>
+</div>
 <div class="toast" id="toast"></div>
 <span id="alCount" hidden></span>
 
-<script src="site.js?v=3"></script>
-<script src="plan.js?v=3"></script>
-<script src="alarms.js?v=3"></script>
-<script src="health.js?v=3"></script>
-<script src="energy.js?v=3"></script>
-<script src="work.js?v=3"></script>
-<script src="occ.js?v=3"></script>
+<script src="site.js?v=4"></script>
+<script src="auth.js?v=4"></script>
+<script src="history.js?v=4"></script>
+<script src="plan.js?v=4"></script>
+<script src="alarms.js?v=4"></script>
+<script src="health.js?v=4"></script>
+<script src="energy.js?v=4"></script>
+<script src="work.js?v=4"></script>
+<script src="occ.js?v=4"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-<script src="floor3d.js?v=3"></script>
-<script src="fdd.js?v=3"></script>
-<script src="ops.js?v=3"></script>
+<script src="floor3d.js?v=4"></script>
+<script src="fdd.js?v=4"></script>
+<script src="ops.js?v=4"></script>
 <script>
-(function(){ var el=document.getElementById('loading');
+(function(){
+  var el=document.getElementById('loading');
+  var $=function(s){ return document.querySelector(s); };
   if (typeof THREE==='undefined'){ el.textContent='Không tải được thư viện 3D.'; return; }
-  var go=function(){ try{ window.__initBMS(); }catch(e){ el.textContent='Lỗi khởi tạo: '+e.message; console.error(e); } };
-  SITE.load().then(go, go);
+
+  function brand(){
+    var c=SITE.cfg;
+    $('#gName').textContent = c.building.name;
+    $('#gSub').textContent  = [c.owner.name, c.building.address].filter(Boolean).join(' · ');
+    var g=$('#gLogo');
+    if (c.owner.logo) g.innerHTML = '<img src="'+c.owner.logo+'" alt="">';
+    else g.textContent = c.theme.logoText || 'BMS';
+    $('#gNote').innerHTML = AUTH.serverMode
+      ? 'Xác thực tại máy chủ của toà nhà. Mật khẩu được băm PBKDF2 kèm muối riêng, phiên hết hạn sau 12 giờ.'
+      : 'Chưa cấu hình máy chủ tại toà nhà nên đây là <b>chế độ trình diễn</b>, không dùng cho vận hành thật. '
+        + 'Thử bằng <b>vanhanh / vanhanh123</b>, <b>kythuat / kythuat123</b> hoặc <b>admin / 3ahome@2026</b>.';
+  }
+  function err(sel,msg){ var e=$(sel); if(!msg){ e.hidden=true; return; } e.textContent=msg; e.hidden=false; }
+
+  var started=false;
+  function start(){
+    if (started) return; started=true;
+    $('#gate').hidden=true;
+    try{ window.__initBMS(); }catch(e){ el.textContent='Lỗi khởi tạo: '+e.message; console.error(e); }
+  }
+
+  $('#gform').addEventListener('submit', function(ev){
+    ev.preventDefault(); err('#gMsg','');
+    var btn=$('#gGo'); btn.disabled=true; btn.textContent='Đang kiểm tra…';
+    AUTH.login($('#gUser').value, $('#gPass').value, $('#gKeep').checked)
+      .then(function(){ $('#gPass').value=''; start(); })
+      .catch(function(e){ err('#gMsg', e.message); })
+      .then(function(){ btn.disabled=false; btn.textContent='Vào hệ thống'; });
+  });
+
+  // khoá màn hình khi để lâu không thao tác — bàn trực hay bỏ máy đó rồi đi
+  window.__lockUI = {
+    show: function(){ $('#lWho').textContent = AUTH.user ? (AUTH.user.name+' · '+AUTH.ROLE_VN[AUTH.user.role]) : '';
+      err('#lMsg',''); $('#lPass').value=''; $('#lock').hidden=false; setTimeout(function(){ $('#lPass').focus(); },60); },
+    hide: function(){ $('#lock').hidden=true; }
+  };
+  $('#lform').addEventListener('submit', function(ev){
+    ev.preventDefault(); err('#lMsg','');
+    AUTH.unlock($('#lPass').value)
+      .then(function(){ window.__lockUI.hide(); })
+      .catch(function(e){ err('#lMsg', e.message); });
+  });
+  $('#lOut').addEventListener('click', function(){ AUTH.logout(); location.reload(); });
+
+  SITE.load().then(function(){
+    brand();
+    return HIST.load();
+  }).then(function(){
+    if (AUTH.restore()) start();
+    else { $('#gate').hidden=false; $('#loading').textContent='Chờ đăng nhập'; setTimeout(function(){ $('#gUser').focus(); },80); }
+  }, function(e){ el.textContent='Lỗi nạp cấu hình: '+e.message; });
 })();
 </script>

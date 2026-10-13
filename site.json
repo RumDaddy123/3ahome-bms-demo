@@ -11,9 +11,61 @@
     "hotline": "0905 680 188",
     "email": "ngoc.pp@3ahome.vn"
   },
-  "vendor": { "name": "3AHOME Vietnam", "site": "3ahome.vn", "support": "0905 680 188" },
-  "theme": { "accent": "#27C8D6", "logoText": "3A", "dark": true },
-  "locale": { "tz": "Asia/Ho_Chi_Minh", "currency": "VND", "kwhPrice": 3200, "workDays": 26 },
-  "ops": { "schedOn": "07:00", "schedOff": "18:00", "sat": true, "sun": false },
-  "storage": { "mode": "local", "api": "", "cloud": "", "push": "manual" }
+  "vendor": {
+    "name": "3AHOME Vietnam",
+    "site": "3ahome.vn",
+    "support": "0905 680 188"
+  },
+  "theme": {
+    "accent": "#27C8D6",
+    "logoText": "3A",
+    "dark": true
+  },
+  "locale": {
+    "tz": "Asia/Ho_Chi_Minh",
+    "currency": "VND",
+    "kwhPrice": 3200,
+    "workDays": 26
+  },
+  "ops": {
+    "schedOn": "07:00",
+    "schedOff": "18:00",
+    "sat": true,
+    "sun": false
+  },
+  "storage": {
+    "mode": "local",
+    "api": "",
+    "cloud": "",
+    "push": "manual"
+  },
+  "auth": {
+    "salt": "3ahome-demo-v1",
+    "users": [
+      {
+        "u": "admin",
+        "name": "Phạm Phú Ngọc",
+        "role": "admin",
+        "h": "349f411fb7e4aa89c3995b1ad88fb6e3a0828ebd3302af96c5f2f11eabe382ad"
+      },
+      {
+        "u": "vanhanh",
+        "name": "Trần Văn Dũng",
+        "role": "operator",
+        "h": "6290cac5ef0a4f7f88ed531fca807e67a32b62e046db6543fbdf7ad362003c02"
+      },
+      {
+        "u": "kythuat",
+        "name": "Lê Minh Hải",
+        "role": "tech",
+        "h": "426216ade06803afbc2ecf3c2db2f13f09180f51548d335ccd30c18f83838e01"
+      },
+      {
+        "u": "khach",
+        "name": "Khách tham quan",
+        "role": "viewer",
+        "h": "7d0956a91e0518724e645c811063d6f78cf20d4fa6edb328e44b136f4d96fdc6"
+      }
+    ]
+  }
 }

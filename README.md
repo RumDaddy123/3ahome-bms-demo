@@ -51,6 +51,37 @@ dữ liệu ra JSON bất cứ lúc nào ở mục Cài đặt.
 
 Khi chưa cấu hình máy chủ, phần mềm lưu tạm trong trình duyệt để chạy thử.
 
+## Đăng nhập và phân quyền
+
+Có máy chủ tại toà nhà thì xác thực là thật: mật khẩu băm PBKDF2-SHA256 200.000 vòng kèm muối
+riêng từng người, lưu trong `bms.sqlite`; phiên có thẻ ngẫu nhiên hết hạn sau 12 giờ; sai mật khẩu
+bị làm chậm. Chưa có máy chủ thì phần mềm chạy **chế độ trình diễn**, đối chiếu băm trong `site.json`
+— màn đăng nhập nói rõ điều đó, đừng dùng để vận hành thật.
+
+| Quyền | Làm được gì |
+|---|---|
+| Khách | chỉ xem |
+| Vận hành | đặt nhiệt độ, bật tắt FCU, nhận xử lý cảnh báo, tạm ẩn, tạo phiếu |
+| Kỹ thuật | thêm: chạy/dừng quạt tăng áp và hút khói, đổi lịch vận hành |
+| Quản trị | thêm: nhận diện toà nhà, nơi lưu dữ liệu, quản lý người dùng |
+
+Tài khoản khởi tạo khi chạy `server.py` lần đầu: `admin` / `3ahome@2026`.
+**Đổi mật khẩu ngay sau khi bàn giao công trình.**
+
+Màn hình tự khoá sau 30 phút không thao tác, mở lại bằng mật khẩu của chính người đang trực —
+bàn trực hay bỏ máy đó rồi đi. Mọi thao tác ghi vào nhật ký kèm tên người làm, không phải tên vai trò.
+
+## Lịch sử dài hạn
+
+Phần mềm chốt sổ mỗi giờ và gộp thành một dòng mỗi ngày: điện năng, mức chuẩn, điện ngoài giờ,
+số cảnh báo, điểm sức khoẻ, phiếu đã đóng, tiền lãng phí chẩn đoán được. Ghi vào bảng `history`
+trên máy chủ của toà nhà, giữ 400 ngày.
+
+Nhờ đó mục **Vận hành › Lịch sử** trả lời được những câu màn hình thời gian thực không trả lời nổi:
+30 ngày qua so với 30 ngày trước thế nào, sửa phiếu xong có hết lãng phí thật không, thiết bị nào
+lặp lỗi mãi không dứt. Khi chưa có máy chủ, phần mềm dựng 90 ngày mô phỏng và **nói rõ trên màn hình**
+rằng đó là số mô phỏng.
+
 ## API của máy chủ tại toà nhà
 
 | Đường dẫn | Việc |
@@ -58,12 +89,17 @@ Khi chưa cấu hình máy chủ, phần mềm lưu tạm trong trình duyệt �
 | `GET /api/health` | kiểm tra sống và số bản ghi |
 | `GET /api/config` · `POST /api/config` | cấu hình riêng của toà nhà |
 | `GET /api/events` · `POST /api/events` | nhật ký vận hành: xác nhận cảnh báo, tạm ẩn, phiếu công việc, bàn giao ca |
+| `POST /api/auth/login` · `GET /api/auth/me` | đăng nhập, kiểm tra phiên |
+| `GET /api/users` · `POST /api/users` | quản lý người dùng (cần quyền quản trị) |
+| `GET /api/history` · `POST /api/history` | lịch sử dài hạn theo ngày |
 
 ## Các mô-đun
 
 | File | Việc |
 |---|---|
 | `site.js` | cấu hình từng toà nhà, lưu trữ tại chỗ |
+| `auth.js` | đăng nhập, phân quyền, khoá màn hình |
+| `history.js` | chốt sổ và đọc lại lịch sử dài hạn |
 | `plan.js` | dữ liệu toà nhà, mặt bằng, thiết bị theo bản vẽ |
 | `alarms.js` | quản lý cảnh báo: gộp trùng, độ trễ xác nhận, chống rung, ưu tiên, nhận xử lý, tạm ẩn, leo thang |
 | `fdd.js` | phát hiện lỗi tự động, ước tính tiền điện lãng phí |

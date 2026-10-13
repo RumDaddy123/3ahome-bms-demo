@@ -10,15 +10,17 @@ const worstOf = ds => ds.reduce((m,d)=>d.status==='alarm'?'alarm':((d.status==='
 
 const view={tab:'tower', floor:'F10', sub:'plan', sel:null, alFilter:'all', ackFor:null,
   shelveFor:null, opSub:'health', wkFilter:'open', wkFor:null, fddCat:'all'};
-const OPS = { role:'operator', connected:true, lastTick:Date.now(), kwh:0,
+const OPS = { connected:true, lastTick:Date.now(), kwh:0,
   sched:{on:'07:00', off:'18:00', mode:'auto', sat:true, sun:false},
   handover:[{t:new Date(Date.now()-3600*1000*5), who:'Ca sáng', txt:'Đã kiểm tra chiller 1, dầu bình thường. FCU tầng 3 còn kêu, đã báo kỹ thuật.'}] };
-const ROLE_VN={operator:'Vận hành',tech:'Kỹ thuật',viewer:'Khách'};
+const ROLE_VN = window.AUTH ? AUTH.ROLE_VN : {operator:'Vận hành',tech:'Kỹ thuật',viewer:'Khách'};
+const ME = () => (window.AUTH && AUTH.user) || {name:'Không rõ', role:'viewer', u:'?'};
 if (window.SITE){ const c=SITE.cfg;
   BLD.name = c.building.name || BLD.name;
   OPS.sched.on=c.ops.schedOn; OPS.sched.off=c.ops.schedOff; OPS.sched.sat=c.ops.sat; OPS.sched.sun=c.ops.sun; }
 const GIA_KWH = (window.SITE?SITE.kwhPrice:0) || 3200;
 const logSite = (kind,rec)=>{ if(window.SITE) SITE.write(kind, rec); };
+Object.defineProperty(OPS, 'role', { get:()=>ME().role });
 const hhmm = d => String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
 function inSchedule(){ const now=new Date(), dow=now.getDay(), t=hhmm(now);
   if (OPS.sched.mode==='on') return true; if (OPS.sched.mode==='off') return false;
@@ -31,7 +33,7 @@ function prioOf(d){
   if (d.status==='alarm') return inSchedule()?2:3;
   return 3; }
 const PRIO_VN={1:'P1 khẩn',2:'P2 cần xử lý',3:'P3 theo dõi'};
-const canCmd = lvl => OPS.role==='tech' || (OPS.role==='operator' && lvl!=='tech');
+const canCmd = lvl => window.AUTH ? AUTH.can(lvl==='tech'?'tech':'operator') : false;
 function initF3(){ if(initF3.done||!window.F3) return; initF3.done=true;
   F3.init({devices, floorOf, HEX, worstOf, selected:()=>view.sel, onPick:d=>openDev(d)}); }
 
@@ -420,34 +422,34 @@ function renderAlarms(){
   B.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openDev(devices.find(x=>x.id===b.dataset.id)));
   B.querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{ view.alFilter=b.dataset.f; renderAlarms(); });
   B.querySelectorAll('[data-ackopen]').forEach(b=>b.onclick=()=>{
-    if(OPS.role==='viewer'){ toast('Vai trò Khách không nhận xử lý được'); return; }
+    if(!AUTH.can('operator')){ toast('Vai trò Khách không nhận xử lý được'); return; }
     view.ackFor=b.dataset.ackopen; view.shelveFor=null; renderAlarms(); const i=$('#ackNote'); if(i) i.focus(); });
   B.querySelectorAll('[data-ackcancel]').forEach(b=>b.onclick=()=>{ view.ackFor=null; renderAlarms(); });
   B.querySelectorAll('[data-ackdo]').forEach(b=>b.onclick=()=>{ const n=$('#ackNote');
-    const aa=AL.ack(b.dataset.ackdo, ROLE_VN[OPS.role], n?n.value.trim():'');
-    if(aa) logSite('alarm.ack', {tag:aa.dev.tag, msg:aa.msg, by:ROLE_VN[OPS.role], note:n?n.value.trim():''});
+    const aa=AL.ack(b.dataset.ackdo, ME().name, n?n.value.trim():'');
+    if(aa) logSite('alarm.ack', {tag:aa.dev.tag, msg:aa.msg, by:ME().name, note:n?n.value.trim():''});
     view.ackFor=null; renderAlarms(); renderHeader(); toast('Đã nhận xử lý'); });
   B.querySelectorAll('[data-shvopen]').forEach(b=>b.onclick=()=>{
-    if(OPS.role==='viewer'){ toast('Vai trò Khách không tạm ẩn được'); return; }
+    if(!AUTH.can('operator')){ toast('Vai trò Khách không tạm ẩn được'); return; }
     view.shelveFor=b.dataset.shvopen; view.ackFor=null; renderAlarms(); const i=$('#shvWhy'); if(i) i.focus(); });
   B.querySelectorAll('[data-shvcancel]').forEach(b=>b.onclick=()=>{ view.shelveFor=null; renderAlarms(); });
   B.querySelectorAll('[data-shvdo]').forEach(b=>b.onclick=()=>{ const w=$('#shvWhy'), why=w?w.value.trim():'';
     if(!why){ toast('Phải ghi lý do thì mới tạm ẩn được'); return; }
-    const sa=AL.shelve(b.dataset.shvdo, +b.dataset.h, why, ROLE_VN[OPS.role]);
-    if(sa) logSite('alarm.shelve', {tag:sa.dev.tag, hours:+b.dataset.h, why, by:ROLE_VN[OPS.role]});
+    const sa=AL.shelve(b.dataset.shvdo, +b.dataset.h, why, ME().name);
+    if(sa) logSite('alarm.shelve', {tag:sa.dev.tag, hours:+b.dataset.h, why, by:ME().name});
     view.shelveFor=null; renderAlarms(); renderHeader();
     toast(`Đã tạm ẩn ${b.dataset.h} giờ, hết hạn sẽ báo lại`); });
-  B.querySelectorAll('[data-unshelve]').forEach(b=>b.onclick=()=>{ AL.unshelve(b.dataset.unshelve, ROLE_VN[OPS.role]); renderAlarms(); renderHeader(); });
+  B.querySelectorAll('[data-unshelve]').forEach(b=>b.onclick=()=>{ AL.unshelve(b.dataset.unshelve, ME().name); renderAlarms(); renderHeader(); });
   B.querySelectorAll('[data-mkwo]').forEach(b=>b.onclick=()=>woFromAlarm(b.dataset.mkwo));
 }
 function woFromAlarm(key){
-  if(OPS.role==='viewer'){ toast('Vai trò Khách không tạo phiếu được'); return; }
+  if(!AUTH.can('operator')){ toast('Vai trò Khách không tạo phiếu được'); return; }
   const a=AL.get(key); if(!a) return;
   const fl=floorOf(a.dev.floor), r=fl.rooms[a.dev.room];
-  const w=WK.create({title:a.msg, dev:a.dev, src:'alarm', prio:a.prio, by:ROLE_VN[OPS.role],
+  const w=WK.create({title:a.msg, dev:a.dev, src:'alarm', prio:a.prio, by:ME().name,
     detail:`${a.dev.tag} · ${fl.name}${r?' · '+r.n:''} · phát sinh ${new Date(a.firstAt).toLocaleString('vi-VN')}`});
   a.wo=w.no; logCmd(`Tạo phiếu ${w.no} từ cảnh báo ${a.dev.tag}`);
-  logSite('wo.create', {no:w.no, title:w.title, tag:a.dev.tag, src:'alarm', by:ROLE_VN[OPS.role]});
+  logSite('wo.create', {no:w.no, title:w.title, tag:a.dev.tag, src:'alarm', by:ME().name});
   renderAlarms(); toast('Đã tạo '+w.no+', xem ở Vận hành › Công việc');
 }
 function renderHeader(){
@@ -462,7 +464,9 @@ function renderHeader(){
   const b=$('#tabBadge'); b.hidden=!n; b.textContent=n;
   const age=Math.round((Date.now()-OPS.lastTick)/1000);
   const st=$('#connState'); if(st){ st.textContent = OPS.connected?`cập nhật ${age}s trước`:'MẤT KẾT NỐI'; st.className='conn '+(OPS.connected?(age>20?'stale':'ok'):'bad'); }
-  const rl=$('#roleChip'); if(rl) rl.textContent=ROLE_VN[OPS.role];
+  const rl=$('#roleChip');
+  if(rl){ const m=ME(); rl.textContent=`${m.name.split(' ').slice(-2).join(' ')} · ${ROLE_VN[m.role]}`;
+    rl.title='Chạm để khoá màn hình'; rl.onclick=()=>{ AUTH.lock(); window.__lockUI.show(); }; }
 }
 function renderRail(){
   $('#floors').innerHTML = BLD.floors.slice().reverse().map(f=>{
@@ -538,17 +542,17 @@ function renderSheet(d){
 }
 function cmd(d,c){
   const needTech = ['fanon','fanoff'].includes(c);
-  if (OPS.role==='viewer'){ toast('Vai trò Khách chỉ được xem'); return; }
+  if (!AUTH.can('operator')){ toast('Vai trò Khách chỉ được xem'); return; }
   if (needTech && !canCmd('tech')){ toast('Lệnh quạt cần vai trò Kỹ thuật'); return; }
   if(c==='sp-'||c==='sp+'){ d.st.sp=clamp(d.st.sp+(c==='sp+'?.5:-.5),18,30); logCmd(`${d.tag} · setpoint ${d.st.sp.toFixed(1)}°C`); toast('Đã gửi lệnh setpoint'); }
   else if(c.startsWith('fan:')){ const v=c.slice(4); d.st.run=v!=='Tắt'; if(d.st.run) d.st.fan=v; logCmd(`${d.tag} · quạt ${v}`); toast('Đã gửi lệnh quạt '+v); }
   else if(c==='fanon'){ d.st.run=true; d.st.pa=45; logCmd(`${d.tag} · chạy quạt`); toast('Đã gửi lệnh chạy'); }
   else if(c==='fanoff'){ d.st.run=false; logCmd(`${d.tag} · dừng quạt`); toast('Đã gửi lệnh dừng'); }
-  else if(c==='ack'){ const n=AL.ackAllOf(d, ROLE_VN[OPS.role], ''); logCmd(`${d.tag} · nhận xử lý ${n} cảnh báo`); renderHeader(); toast(n?`Đã nhận ${n} cảnh báo`:'Thiết bị này không có cảnh báo nào đang mở'); }
+  else if(c==='ack'){ const n=AL.ackAllOf(d, ME().name, ''); logCmd(`${d.tag} · nhận xử lý ${n} cảnh báo`); renderHeader(); toast(n?`Đã nhận ${n} cảnh báo`:'Thiết bị này không có cảnh báo nào đang mở'); }
   d.status=statusOf(d); refresh(); renderSheet(d);
 }
 // ---------- hiệu năng ----------
-const OPSUB=[['health','Sức khoẻ'],['energy','Năng lượng'],['work','Công việc'],['occ','Chiếm dụng'],['set','Cài đặt']];
+const OPSUB=[['health','Sức khoẻ'],['energy','Năng lượng'],['hist','Lịch sử'],['work','Công việc'],['occ','Chiếm dụng'],['set','Cài đặt']];
 function renderOps(){
   const nav=`<div class="subnav">${OPSUB.map(([k,v])=>{
     let n=0;
@@ -556,7 +560,8 @@ function renderOps(){
     if(k==='health'&&window.HLT){ const h=HLT.last(); n=h?h.off.length+h.stale.length+h.lowBatt:0; }
     return `<button data-os="${k}" class="${view.opSub===k?'on':''}">${v}${n?`<i>${n}</i>`:''}</button>`;}).join('')}</div>`;
   const body = view.opSub==='energy'?opEnergy(): view.opSub==='work'?opWork():
-               view.opSub==='occ'?opOcc(): view.opSub==='set'?opSet(): opHealth();
+               view.opSub==='occ'?opOcc(): view.opSub==='set'?opSet():
+               view.opSub==='hist'?opHist(): opHealth();
   $('#opBody').innerHTML = nav + body;
   const B=$('#opBody');
   B.querySelectorAll('[data-os]').forEach(x=>x.onclick=()=>{ view.opSub=x.dataset.os; renderOps(); });
@@ -564,7 +569,7 @@ function renderOps(){
   B.querySelectorAll('[data-floor]').forEach(x=>x.onclick=()=>openFloor(x.dataset.floor));
   const ef=B.querySelector('#enFind'); if(ef) ef.onclick=()=>{ view.fddCat='waste'; setTab('fdd');
     toast(inSchedule()?'Đang trong giờ vận hành, phần ngoài giờ xem lại sau 18:00':'Đang lọc nhóm lãng phí năng lượng'); };
-  ({health:bindHealth, energy:()=>{}, work:bindWork, occ:bindOcc, set:bindSet}[view.opSub]||(()=>{}))(B);
+  ({health:bindHealth, energy:()=>{}, hist:()=>{}, work:bindWork, occ:bindOcc, set:bindSet}[view.opSub]||(()=>{}))(B);
 }
 
 // ---------- Vận hành › Sức khoẻ hệ thống ----------
@@ -603,10 +608,10 @@ function opHealth(){
     ${h.lowBatt?`<button class="btn full" id="battWo">Tạo phiếu thay pin cho ${h.lowBatt} cảm biến dưới 25%</button>`:''}</div>`;
 }
 function bindHealth(B){ const b=B.querySelector('#battWo'); if(b) b.onclick=()=>{
-  if(OPS.role==='viewer'){ toast('Vai trò Khách không tạo phiếu được'); return; }
+  if(!AUTH.can('operator')){ toast('Vai trò Khách không tạo phiếu được'); return; }
   const h=HLT.last(), low=h.batt.filter(x=>x.pct<25);
   low.forEach(x=>WK.create({title:'Thay pin cảm biến không dây', dev:x.d, src:'health', prio:3,
-    by:ROLE_VN[OPS.role], who:'Anh Hải (điều khiển)', detail:`Pin còn ${x.pct}%, ước tính hết sau ${x.days} ngày`}));
+    by:ME().name, who:'Anh Hải (điều khiển)', detail:`Pin còn ${x.pct}%, ước tính hết sau ${x.days} ngày`}));
   logCmd(`Tạo ${low.length} phiếu thay pin cảm biến`); view.opSub='work'; renderOps(); toast(`Đã tạo ${low.length} phiếu`); }; }
 
 // ---------- Vận hành › Năng lượng ----------
@@ -683,15 +688,15 @@ function opWork(){
 function bindWork(B){
   B.querySelectorAll('[data-wf]').forEach(x=>x.onclick=()=>{ view.wkFilter=x.dataset.wf; renderOps(); });
   B.querySelectorAll('[data-asg]').forEach(x=>x.onclick=()=>{ view.wkFor=view.wkFor===x.dataset.asg?null:x.dataset.asg; renderOps(); });
-  B.querySelectorAll('[data-asgdo]').forEach(x=>x.onclick=()=>{ WK.assign(x.dataset.asgdo, x.dataset.who, ROLE_VN[OPS.role]);
+  B.querySelectorAll('[data-asgdo]').forEach(x=>x.onclick=()=>{ WK.assign(x.dataset.asgdo, x.dataset.who, ME().name);
     view.wkFor=null; logCmd(`${x.dataset.asgdo} · giao cho ${x.dataset.who}`); renderOps(); toast('Đã giao việc'); });
   B.querySelectorAll('[data-stw]').forEach(x=>x.onclick=()=>{
-    if(OPS.role==='viewer'){ toast('Vai trò Khách không đổi được trạng thái phiếu'); return; }
-    WK.setState(x.dataset.stw, x.dataset.s, ROLE_VN[OPS.role]); logCmd(`${x.dataset.stw} · ${WK.ST_VN[x.dataset.s]}`); renderOps(); });
+    if(!AUTH.can('operator')){ toast('Vai trò Khách không đổi được trạng thái phiếu'); return; }
+    WK.setState(x.dataset.stw, x.dataset.s, ME().name); logCmd(`${x.dataset.stw} · ${WK.ST_VN[x.dataset.s]}`); renderOps(); });
   B.querySelectorAll('[data-pm]').forEach(x=>x.onclick=()=>{
-    if(OPS.role==='viewer'){ toast('Vai trò Khách không tạo phiếu được'); return; }
+    if(!AUTH.can('operator')){ toast('Vai trò Khách không tạo phiếu được'); return; }
     const d=devices.find(y=>y.id===x.dataset.pm);
-    const w=WK.create({title:decodeURIComponent(x.dataset.w), dev:d, src:'pm', prio:3, by:ROLE_VN[OPS.role],
+    const w=WK.create({title:decodeURIComponent(x.dataset.w), dev:d, src:'pm', prio:3, by:ME().name,
       detail:`Giờ chạy tích luỹ ${d.st.hours.toLocaleString('vi-VN')} h`});
     logCmd(`Tạo phiếu bảo trì ${w.no} · ${d.tag}`); renderOps(); toast('Đã tạo '+w.no); });
 }
@@ -733,6 +738,78 @@ function bindOcc(B){ const t=B.querySelector('#occTog'); if(t) t.onclick=()=>{
   if(!OCC.enabled) devices.forEach(d=>{ if(d.setback) d.setback=0; });
   renderOps(); toast(OCC.enabled?'Đã bật':'Đã tắt, trả mọi phòng về cài đặt gốc'); }; }
 
+// ---------- Vận hành › Người dùng ----------
+let newRole='admin';
+function bindUsers(B){
+  AUTH.users().then(L=>{
+    const box=B.querySelector('#usrList'); if(!box) return;
+    box.innerHTML = L.length ? L.map(u=>`<div class="urow ${u.disabled?'off':''}">
+        <div><b>${u.name}</b><em>${u.u} · ${ROLE_VN[u.role]||u.role}${u.last_login?' · vào lúc '+new Date(u.last_login).toLocaleString('vi-VN',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'}):' · chưa đăng nhập lần nào'}</em></div>
+        ${u.demo?'<span class="atag">trình diễn</span>'
+          :`<button class="mini" data-udis="${u.u}" data-v="${u.disabled?0:1}">${u.disabled?'Mở lại':'Khoá'}</button>`}
+      </div>`).join('') : '<p class="muted">Chưa có người dùng nào.</p>';
+    box.querySelectorAll('[data-udis]').forEach(b=>b.onclick=()=>{
+      const row=L.find(x=>x.u===b.dataset.udis);
+      AUTH.saveUser({u:row.u, name:row.name, role:row.role, disabled:+b.dataset.v})
+        .then(()=>{ renderOps(); toast(+b.dataset.v?'Đã khoá tài khoản':'Đã mở lại tài khoản'); })
+        .catch(e=>toast(e.message)); });
+  }).catch(()=>{});
+  const add=B.querySelector('#usrAdd'); if(!add) return;
+  add.onclick=()=>{ const f=B.querySelector('#usrForm'); f.hidden=!f.hidden; };
+  B.querySelectorAll('[data-urole]').forEach(b=>b.onclick=()=>{
+    newRole=b.dataset.urole; B.querySelectorAll('[data-urole]').forEach(x=>x.classList.toggle('on', x===b)); });
+  B.querySelector('#uSave').onclick=()=>{
+    const u=B.querySelector('#uU').value.trim(), n=B.querySelector('#uN').value.trim(), p=B.querySelector('#uP').value;
+    if(!u||!p){ toast('Cần tên đăng nhập và mật khẩu'); return; }
+    if(p.length<8){ toast('Mật khẩu phải từ 8 ký tự'); return; }
+    AUTH.saveUser({u, name:n||u, role:newRole, p})
+      .then(()=>{ logCmd(`Thêm người dùng ${u} · quyền ${ROLE_VN[newRole]}`); renderOps(); toast('Đã lưu người dùng'); })
+      .catch(e=>toast(e.message)); };
+  B.querySelector('#uCancel').onclick=()=>{ B.querySelector('#usrForm').hidden=true; };
+}
+
+// ---------- Vận hành › Lịch sử ----------
+function opHist(){
+  const c=HIST.compare(30), rows=HIST.last(30), rep=HIST.topRepeats(6);
+  if(!c) return '<p class="muted">Chưa có dữ liệu lịch sử.</p>';
+  const d=(v,good)=>`<span class="dlt ${(good?v<0:v>0)?'cok':'cwarn'}">${v>0?'+':''}${v.toFixed(0)}%</span>`;
+  const vnd=n=>n>=1e6?(n/1e6).toFixed(1).replace('.0','')+' triệu':Math.round(n/1000)+' nghìn';
+  return `
+  ${HIST.seeded?'<div class="escbar note">Bản trình diễn: 90 ngày dưới đây là số mô phỏng. Khi lắp thật, chính phần mềm chốt sổ mỗi giờ và ghi xuống máy chủ của toà nhà.</div>':''}
+  ${(!HIST.seeded && HIST.days.length<30)?`<div class="escbar note">Hệ thống mới chạy ${HIST.days.length} ngày. Các so sánh dưới đây cần đủ 30 ngày mới có ý nghĩa, càng chạy lâu càng chắc.</div>`:''}
+
+  <div class="card"><div class="ch">30 ngày qua so với 30 ngày trước</div>
+    <div class="cmp"><span>Điện năng</span><b class="mono">${Math.round(c.kwh).toLocaleString('vi-VN')} kWh</b>${d(c.kwhPc,true)}</div>
+    <div class="cmp"><span>Vượt mức chuẩn</span><b class="mono">${Math.round(c.excess).toLocaleString('vi-VN')} kWh</b>
+      <span class="dlt ${c.excess<c.excessPrev?'cok':'cwarn'}">trước ${Math.round(c.excessPrev).toLocaleString('vi-VN')}</span></div>
+    <div class="cmp"><span>Điện ngoài giờ</span><b class="mono">${c.offShare.toFixed(0)}%</b>
+      <span class="dlt ${c.offShare<c.offSharePrev?'cok':'cwarn'}">trước ${c.offSharePrev.toFixed(0)}%</span></div>
+    <div class="cmp"><span>Cảnh báo</span><b class="mono">${c.alarms}</b>${d(c.alarmsPc,true)}</div>
+    <div class="cmp"><span>Điểm sức khoẻ trung bình</span><b class="mono">${c.health.toFixed(0)}</b>
+      <span class="dlt ${c.health>c.healthPrev?'cok':'cwarn'}">trước ${c.healthPrev.toFixed(0)}</span></div>
+    <div class="cmp"><span>Phiếu đã đóng</span><b class="mono">${c.woDone}</b>
+      <span class="dlt">trước ${c.woDonePrev}</span></div>
+    <div class="cmp"><span>Lãng phí chẩn đoán được</span><b class="mono">${vnd(c.fddVnd)} đ/tháng</b>
+      <span class="dlt ${c.fddVnd<c.fddVndPrev?'cok':'cwarn'}">trước ${vnd(c.fddVndPrev)}</span></div>
+    <p class="muted">Đây là phần màn hình thời gian thực không trả lời được. Chỉ khi có lịch sử mới chứng minh được việc sửa chữa có đem lại kết quả hay không.</p></div>
+
+  <div class="card"><div class="ch">Điện năng từng ngày so với mức chuẩn</div>
+    ${HIST.chart('kwh',30,'base')}
+    <div class="elg"><span><i style="background:#27C8D6"></i>đạt chuẩn</span><span><i style="background:#F5B23C"></i>vượt chuẩn</span><span><i class="dash"></i>mức chuẩn</span></div></div>
+
+  <div class="card"><div class="ch">Điểm sức khoẻ hệ BMS</div>${HIST.chart('health',30)}</div>
+
+  <div class="card"><div class="ch">Số cảnh báo mỗi ngày</div>${HIST.chart('alarms',30)}
+    <p class="muted">Đường này đi xuống là dấu hiệu tốt nhất: ít báo hơn vì ít lỗi hơn, không phải vì ai đó tắt bớt cảnh báo.</p></div>
+
+  <div class="card"><div class="ch">Thiết bị lặp lỗi nhiều lần</div>
+    ${rep.length? rep.map(r=>`<button class="frow" data-id="${r.devId}">
+        <span class="dot" style="background:var(--warn)"></span><b>${r.tag}</b>
+        <span class="fm">${r.msg}</span><i>${r.n} lần</i></button>`).join('')
+      : '<p class="muted">Chưa thiết bị nào lặp lỗi trong phiên này. Số này tích luỹ theo thời gian chạy.</p>'}
+    <p class="muted">Lỗi tự hết rồi tự quay lại là thứ dễ bị bỏ qua nhất vì lần nào cũng có vẻ nhỏ. Đếm theo lịch sử mới lộ ra.</p></div>`;
+}
+
 // ---------- Vận hành › Cài đặt ----------
 function opSet(){
   const open=inSchedule();
@@ -766,9 +843,24 @@ function opSet(){
     <p class="muted">Cơ sở dữ liệu nằm ở toà nhà. Hệ thống chỉ đẩy ra internet khi chủ đầu tư bật và chỉ tới địa chỉ do chủ đầu tư chỉ định. Không có đường nào tự gửi dữ liệu về máy chủ của đơn vị lắp đặt. Mất mạng thì phần mềm vẫn chạy và vẫn ghi đủ, nối lại mạng mới đồng bộ.</p>
     <p class="muted">Đơn vị lắp đặt: ${c.vendor.name}${c.vendor.support?' · hỗ trợ '+c.vendor.support:''}</p></div>`; })()}
 
-  <div class="card"><div class="ch">Vai trò đang dùng</div>
-    <div class="seg">${Object.entries(ROLE_VN).map(([k,v])=>`<button data-role="${k}" class="${OPS.role===k?'on':''}">${v}</button>`).join('')}</div>
-    <p class="muted">Khách chỉ xem. Vận hành được đặt nhiệt độ, bật tắt FCU, nhận xử lý cảnh báo. Kỹ thuật thêm quyền chạy/dừng quạt tăng áp, hút khói và đổi lịch.</p></div>
+  <div class="card"><div class="ch">Tài khoản đang trực</div>
+    <div class="row2"><span>Người dùng</span><b>${ME().name}</b></div>
+    <div class="row2"><span>Tên đăng nhập</span><b class="mono">${ME().u}</b></div>
+    <div class="row2"><span>Quyền</span><b style="color:var(--accent)">${ROLE_VN[ME().role]}</b></div>
+    <div class="row2"><span>Xác thực</span><b class="mono">${AUTH.serverMode?'máy chủ toà nhà':'chế độ trình diễn'}</b></div>
+    <p class="muted">Khách chỉ xem. Vận hành đặt nhiệt độ, bật tắt FCU, nhận xử lý cảnh báo. Kỹ thuật thêm quyền chạy/dừng quạt tăng áp, hút khói và đổi lịch. Quản trị thêm quyền đổi nhận diện toà nhà, nơi lưu dữ liệu và người dùng. Mọi thao tác đều ghi tên người làm vào nhật ký.</p>
+    <div class="alacts"><button class="mini" id="acLock">Khoá màn hình</button><button class="mini" id="acOut">Đăng xuất</button></div></div>
+
+  ${AUTH.is('admin')?`<div class="card"><div class="ch">Người dùng</div>
+    <div id="usrList"><p class="muted">Đang tải…</p></div>
+    ${AUTH.serverMode?`<div class="alacts"><button class="mini on" id="usrAdd">Thêm người dùng</button></div>
+      <div id="usrForm" hidden>
+        <label class="fld"><span>Tên đăng nhập</span><input id="uU" autocapitalize="none"></label>
+        <label class="fld"><span>Họ tên</span><input id="uN"></label>
+        <label class="fld"><span>Quyền</span><div class="seg">${Object.entries(ROLE_VN).map(([k,v],i)=>`<button type="button" data-urole="${k}" class="${i===0?'on':''}">${v}</button>`).join('')}</div></label>
+        <label class="fld"><span>Mật khẩu</span><input id="uP" type="password"></label>
+        <div class="alacts"><button class="mini on" id="uSave">Lưu</button><button class="mini" id="uCancel">Bỏ</button></div></div>`
+      : '<p class="muted">Thêm sửa người dùng cần máy chủ đặt tại toà nhà. Ở chế độ trình diễn, danh sách lấy từ site.json và chỉ để xem.</p>'}</div>`:''}
 
   <div class="card"><div class="ch">Lịch vận hành</div>
     <div class="row2"><span>Giờ chạy</span><b class="mono">${OPS.sched.on} – ${OPS.sched.off}</b></div>
@@ -797,22 +889,22 @@ function opSet(){
 function bindSet(B){
   const q=i=>B.querySelector(i), val=i=>{const e=q(i); return e?e.value.trim():'';};
   if(q('#stSave')){
-    q('#stSave').onclick=()=>{ if(!canCmd('tech')){ toast('Chỉ vai trò Kỹ thuật đổi được nhận diện toà nhà'); return; }
+    q('#stSave').onclick=()=>{ if(!AUTH.can('admin')){ toast('Chỉ Quản trị đổi được nhận diện toà nhà'); return; }
       SITE.save({ building:{name:val('#stName')||'Toà nhà chưa đặt tên', code:val('#stCode')},
         owner:{name:val('#stOwner'), hotline:val('#stPhone')},
         theme:{logoText:(val('#stInit')||SITE.cfg.theme.logoText||'3A').toUpperCase()},
         locale:{kwhPrice:+val('#stPrice')||3200} });
       BLD.name=SITE.cfg.building.name; logCmd('Cập nhật nhận diện toà nhà');
-      logSite('site.config', {name:SITE.cfg.building.name, by:ROLE_VN[OPS.role]});
+      logSite('site.config', {name:SITE.cfg.building.name, by:ME().name});
       renderOps(); toast('Đã lưu, giao diện đã đổi theo toà nhà này'); };
-    q('#stReset').onclick=()=>{ SITE.reset(); setTimeout(()=>{ BLD.name=SITE.cfg.building.name; renderOps(); },200); toast('Đã trả về mặc định'); };
-    q('#stLogoPick').onclick=()=>q('#stLogo').click();
+    q('#stReset').onclick=()=>{ if(!AUTH.can('admin')){ toast('Chỉ Quản trị đổi được nhận diện toà nhà'); return; } SITE.reset(); setTimeout(()=>{ BLD.name=SITE.cfg.building.name; renderOps(); },200); toast('Đã trả về mặc định'); };
+    q('#stLogoPick').onclick=()=>{ if(!AUTH.can('admin')){ toast('Chỉ Quản trị đổi được logo'); return; } q('#stLogo').click(); };
     q('#stLogo').onchange=e=>{ const f=e.target.files[0]; if(!f) return;
       if(f.size>260000){ toast('Ảnh quá nặng, chọn file dưới 250KB'); return; }
       const r=new FileReader(); r.onload=()=>{ SITE.save({owner:{logo:r.result}}); renderOps(); toast('Đã đổi logo'); }; r.readAsDataURL(f); };
     const dl=q('#stLogoDel'); if(dl) dl.onclick=()=>{ SITE.cfg.owner.logo=''; SITE.save({}); renderOps(); };
-    B.querySelectorAll('[data-sw]').forEach(x=>x.onclick=()=>{ SITE.save({theme:{accent:x.dataset.sw}}); renderOps(); });
-    q('#stStore').onclick=()=>{ if(!canCmd('tech')){ toast('Chỉ vai trò Kỹ thuật đổi được nơi lưu dữ liệu'); return; }
+    B.querySelectorAll('[data-sw]').forEach(x=>x.onclick=()=>{ if(!AUTH.can('admin')){ toast('Chỉ Quản trị đổi được màu'); return; } SITE.save({theme:{accent:x.dataset.sw}}); renderOps(); });
+    q('#stStore').onclick=()=>{ if(!AUTH.can('admin')){ toast('Chỉ Quản trị đổi được nơi lưu dữ liệu'); return; }
       SITE.save({storage:{api:val('#stApi'), cloud:val('#stCloud')}}); renderOps();
       toast(val('#stApi')?'Sẽ ghi lên máy chủ tại toà nhà':'Đang lưu trên máy này'); };
     q('#stExport').onclick=()=>{ const b=new Blob([SITE.exportJSON()],{type:'application/json'});
@@ -820,12 +912,14 @@ function bindSet(B){
       a.href=u; a.download=(SITE.cfg.building.code||'bms')+'-data.json'; a.click(); URL.revokeObjectURL(u);
       toast('Đã xuất file dữ liệu của toà nhà'); };
   }
-  B.querySelectorAll('[data-role]').forEach(b=>b.onclick=()=>{ OPS.role=b.dataset.role; renderOps(); renderHeader(); toast('Vai trò: '+ROLE_VN[OPS.role]); });
+  const lk=B.querySelector('#acLock'); if(lk) lk.onclick=()=>{ AUTH.lock(); window.__lockUI.show(); };
+  const ou=B.querySelector('#acOut'); if(ou) ou.onclick=()=>{ AUTH.logout(); location.reload(); };
+  if (B.querySelector('#usrList')) bindUsers(B);
   B.querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{ if(!canCmd('tech')){toast('Chỉ vai trò Kỹ thuật đổi được lịch');return;} OPS.sched.mode=b.dataset.mode; logCmd('Lịch vận hành · '+b.textContent); renderOps(); });
   B.querySelectorAll('[data-day]').forEach(b=>b.onclick=()=>{ if(!canCmd('tech')){toast('Chỉ vai trò Kỹ thuật đổi được lịch');return;} const k=b.dataset.day; OPS.sched[k]=!OPS.sched[k]; logCmd('Lịch cuối tuần · '+b.textContent+(OPS.sched[k]?' bật':' tắt')); renderOps(); });
   const ho=B.querySelector('#hoAdd'); if(ho) ho.onclick=()=>{ const t=$('#hoTxt').value.trim(); if(!t) return;
-    OPS.handover.unshift({t:new Date(), who:ROLE_VN[OPS.role], txt:t});
-    logSite('handover', {who:ROLE_VN[OPS.role], txt:t}); renderOps(); toast('Đã ghi sổ bàn giao'); };
+    OPS.handover.unshift({t:new Date(), who:ME().name, txt:t});
+    logSite('handover', {who:ME().name, txt:t}); renderOps(); toast('Đã ghi sổ bàn giao'); };
   const of_=B.querySelector('#opOffline'); if(of_) of_.onclick=()=>{ OPS.connected=!OPS.connected; renderOps(); renderHeader(); toast(OPS.connected?'Đã kết nối lại':'Đang mô phỏng mất kết nối, dữ liệu đứng yên'); };
   const pf=B.querySelector('#opPerf'); if(pf) pf.onclick=runBench;
 }
@@ -898,16 +992,16 @@ function renderFDD(){
   $('#fdBody').querySelectorAll('[data-fc]').forEach(b=>b.onclick=()=>{ view.fddCat=b.dataset.fc; renderFDD(); });
   $('#fdBody').querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openDev(devices.find(x=>x.id===b.dataset.open)));
   $('#fdBody').querySelectorAll('[data-ticket]').forEach(b=>b.onclick=()=>{
-    if(OPS.role==='viewer'){ toast('Vai trò Khách không tạo phiếu được'); return; }
+    if(!AUTH.can('operator')){ toast('Vai trò Khách không tạo phiếu được'); return; }
     const f=FDD.get(b.dataset.ticket); if(!f) return;
     const fl=floorOf(f.dev.floor), r=fl.rooms[f.dev.room];
-    const w=WK.create({title:f.rule.name, dev:f.dev, src:'fdd', prio:f.rule.sev, by:ROLE_VN[OPS.role],
+    const w=WK.create({title:f.rule.name, dev:f.dev, src:'fdd', prio:f.rule.sev, by:ME().name,
       detail:`${f.ev}. ${f.rule.fix}${f.kwh?` Ước tính lãng phí ${FDD.vnd(f.kwh*FDD.GIA_DIEN)} đồng mỗi tháng.`:''}`});
     f.ticket={no:w.no, at:w.at, who:w.who, done:false, wo:w};
     logCmd(`Tạo phiếu ${w.no} · ${f.rule.name} · ${f.dev.tag}`);
     renderFDD(); toast('Đã tạo '+w.no+', xem ở Vận hành › Công việc'); });
   $('#fdBody').querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{ const f=FDD.get(b.dataset.close);
-    if(f&&f.ticket){ f.ticket.done=true; WK.setState(f.ticket.no,'done',ROLE_VN[OPS.role]); logCmd(`Đóng phiếu ${f.ticket.no}`); }
+    if(f&&f.ticket){ f.ticket.done=true; WK.setState(f.ticket.no,'done',ME().name); logCmd(`Đóng phiếu ${f.ticket.no}`); }
     renderFDD(); toast('Đã đóng phiếu'); });
   $('#fdBody').querySelectorAll('[data-ig]').forEach(b=>b.onclick=()=>{ FDD.ignore(b.dataset.ig); renderFDD(); toast('Đã bỏ qua lỗi này'); });
   $('#fdBody').querySelectorAll('[data-unig]').forEach(b=>b.onclick=()=>{ FDD.unignore(b.dataset.unig); renderFDD(); });
@@ -935,7 +1029,18 @@ qIn.addEventListener('input',()=>{
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') sBar.hidden=true; });
 
 // ---------- vòng cập nhật ----------
-function refresh(){ runFDD(); if(window.HLT) HLT.scan(devices, floorOf); paint3D(); renderHeader(); renderRail();
+function histCtx(){
+  const e=window.EN&&EN.stats(), h=window.HLT&&HLT.last(), al=window.AL&&AL.stats(),
+        f=window.FDD&&FDD.stats(), w=window.WK&&WK.stats();
+  if(!e||!h||!al) return null;
+  return { kw:e.cur.kw, base:e.cur.base, open:!!e.cur.open, alarms:al.n, p1:al.p1,
+    acks:al.n-al.un, fdd:f?f.n:0, fddVnd:f?f.vnd:0, health:HLT.score(h), offPts:h.off.length,
+    woOpen:w?w.open:0, woDone:w?w.done:0 };
+}
+function refresh(){ runFDD(); if(window.HLT) HLT.scan(devices, floorOf);
+  if(window.HIST) HIST.tick(histCtx);
+  if(window.AUTH && AUTH.checkIdle()) window.__lockUI.show();
+  paint3D(); renderHeader(); renderRail();
   if(view.tab==='tower') renderTower();
   else if(view.tab==='floor') renderFloor();
   else if(view.tab==='alarms') renderAlarms();
@@ -954,6 +1059,7 @@ OCC.init(devices, floorOf);
   if(dirty){ const w=WK.create({title:'Chênh áp lọc gió cao, cần vệ sinh lọc', dev:dirty, src:'alarm', prio:2, by:'Ca đêm',
     detail:'Ca đêm ghi nhận, chưa có vật tư thay thế'}); w.due=new Date(Date.now()-3*3600e3); }
 })();
+AL.onRaise = a => { if(window.HIST) HIST.noteAlarm(a); };
 AL.onEscalate = (a,lv)=>{ toast(`Leo thang cấp ${lv}: ${a.dev.tag} · ${a.msg} → ${AL.ESC_TO[lv]}`);
   logCmd(`Leo thang cấp ${lv} · ${a.dev.tag} · ${a.msg}`); };
 runModules(inSchedule()); HLT.scan(devices, floorOf);
@@ -961,5 +1067,8 @@ paint3D(); resize3D(); fit3D(); runFDD(); setTab('tower'); refresh();
 $('#loading').remove();
 setInterval(()=>{ if(document.hidden) return; tick(); refresh(); },1500);
 setInterval(()=>{ if(!document.hidden) renderHeader(); },1000);
+setInterval(()=>{ if(window.HIST) HIST.flush(); }, 60e3);
+addEventListener('pagehide', ()=>{ if(window.HIST) HIST.flush(); });
+['pointerdown','keydown'].forEach(ev=>addEventListener(ev, ()=>{ if(window.AUTH) AUTH.touch(); }, {passive:true}));
 if(/[?&]bench=1/.test(location.search)) setTimeout(()=>{ setTab('perf'); setTimeout(runBench,600); },800);
 };

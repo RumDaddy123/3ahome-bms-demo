@@ -20,7 +20,7 @@ const pend  = new Map();         // key -> thời điểm điều kiện bắt �
 const rows  = new Map();         // key -> dòng cảnh báo
 const byDev = new Map();         // id thiết bị -> tập key, để không phải quét cả bảng mỗi chu kỳ
 const log   = [];                // nhật ký thao tác cảnh báo
-let onEscalate = null;
+let onEscalate = null, onRaise = null;
 
 // lý do chính của một thiết bị: [mã lý do, câu mô tả] hoặc null nếu bình thường
 function reasonOf(d){
@@ -69,10 +69,12 @@ function sync(devices, prioOf){
               ack:null, shelveUntil:0, shelveWhy:'', chatter:false, esc:0 };
         rows.set(key, a); pend.delete(key);
         let s=byDev.get(d.id); if(!s) byDev.set(d.id, s=new Set()); s.add(key);
+        if (onRaise) onRaise(a);
       } else {
         a.msg = r[1]; a.lastAt = now; a.lvl = d.status;
         if (a.state !== 'active'){                       // lỗi quay lại sau khi đã hết
           a.state='active'; a.count++; a.trans.push(now);
+          if (onRaise) onRaise(a);
           if (a.ack && a.ackedAt < a.trans[a.trans.length-1]) a.ack=null;   // lỗi mới thì phải xác nhận lại
         }
         const p = prioOf(d); if (p < a.prio) a.prio = p;  // chỉ cho nặng thêm, không tự hạ cấp
@@ -151,5 +153,5 @@ function note(txt){ log.unshift({t:new Date(), txt}); if(log.length>60) log.pop(
 return { sync, list, stats, SP_SETTLE, ON_DELAY, ack, ackAllOf, shelve, unshelve, dueIn, reasonOf,
   shelved, live, log, get:k=>rows.get(k), all:()=>[...rows.values()],
   forDev:d=>[...rows.values()].filter(a=>a.dev===d && a.state!=='done'),
-  set onEscalate(f){ onEscalate=f; }, ESC, ESC_TO, CHATTER_N };
+  set onEscalate(f){ onEscalate=f; }, set onRaise(f){ onRaise=f; }, ESC, ESC_TO, CHATTER_N };
 })();

@@ -15,6 +15,7 @@ const DEFAULT = {
   locale:   { tz:'Asia/Ho_Chi_Minh', currency:'VND', kwhPrice:3200, workDays:26 },
   ops:      { schedOn:'07:00', schedOff:'18:00', sat:true, sun:false },
   storage:  { mode:'local', api:'', cloud:'', push:'manual' },   // local | server ; cloud: đẩy lên internet
+  auth:     { salt:'', users:[] },   // chỉ dùng khi chưa có máy chủ tại toà nhà (chế độ trình diễn)
 };
 
 let cfg = JSON.parse(JSON.stringify(DEFAULT));
