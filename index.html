@@ -152,6 +152,42 @@ svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#06222A}
 .btn.danger{background:rgba(255,90,90,.12);border-color:rgba(255,90,90,.4);color:var(--alarm)}
 .btn.full{width:100%}
+.hbtn{width:32px;height:32px;border-radius:8px;background:var(--panel-2);border:1px solid var(--line);font-size:17px;color:var(--ink-2);display:grid;place-items:center;flex:none}
+.conn{font-family:var(--mono);font-size:10.5px;padding:3px 7px;border-radius:6px;background:rgba(43,211,122,.12);color:var(--ok);white-space:nowrap}
+.conn.stale{background:rgba(245,178,60,.14);color:var(--warn)} .conn.bad{background:rgba(255,90,90,.16);color:var(--alarm)}
+.rolechip{font-size:10.5px;font-weight:700;padding:3px 8px;border-radius:999px;background:rgba(39,200,214,.14);color:var(--accent);white-space:nowrap}
+.searchbar{position:relative;display:flex;gap:8px;align-items:center;padding:8px 13px;border-bottom:1px solid var(--line);background:var(--panel)}
+.searchbar input{flex:1;background:var(--bg);border:1px solid var(--line-2);border-radius:9px;padding:10px 12px;min-height:42px;font-size:14px}
+.qres{position:absolute;left:13px;right:13px;top:100%;z-index:25;max-height:300px;overflow-y:auto;background:var(--panel);border:1px solid var(--line-2);border-radius:0 0 12px 12px;display:grid}
+.qres:empty{display:none}
+.qres button{display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;min-height:48px}
+.qres b{font-size:13px}.qres span{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.fchips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}.fchips::-webkit-scrollbar{display:none}
+.fchip{flex:none;border:1px solid var(--line-2);background:var(--panel-2);color:var(--ink-2);border-radius:999px;padding:7px 12px;font-size:12px;font-weight:600;min-height:36px}
+.fchip.on{background:var(--accent);border-color:var(--accent);color:#06222A}
+.fchip i{font-style:normal;opacity:.75;font-family:var(--mono)}
+.alrow{background:var(--panel-2);border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:11px;overflow:hidden}
+.alrow.p1{border-left-color:var(--alarm)} .alrow.p2{border-left-color:var(--warn)} .alrow.p3{border-left-color:var(--off)}
+.alrow.acked{opacity:.62}
+.alopen{display:flex;gap:10px;align-items:center;width:100%;text-align:left;padding:10px 12px;min-height:52px}
+.alopen .t{flex:1;min-width:0}.alopen .t b{display:block;font-size:13px}
+.alopen .t span{font-size:11px;color:var(--muted);font-family:var(--mono)}
+.alopen .v{font-family:var(--mono);font-size:12px;color:var(--ink-2)}
+.pbadge{font-size:10px;font-weight:800;padding:3px 6px;border-radius:6px;font-family:var(--mono);flex:none}
+.pbadge.p1{background:rgba(255,90,90,.18);color:var(--alarm)} .pbadge.p2{background:rgba(245,178,60,.16);color:var(--warn)}
+.pbadge.p3{background:rgba(90,102,120,.22);color:#9AA6B8}
+.alacts{display:flex;gap:6px;padding:0 12px 10px;flex-wrap:wrap}
+.mini{border:1px solid var(--line-2);background:var(--bg);border-radius:8px;padding:7px 11px;font-size:11.5px;font-weight:600;color:var(--ink-2);min-height:34px}
+.mini.on{background:var(--accent);border-color:var(--accent);color:#06222A}
+.ackbox{display:flex;gap:6px;padding:0 12px 10px}
+.ackbox input{flex:1;background:var(--bg);border:1px solid var(--line-2);border-radius:8px;padding:8px 10px;font-size:12.5px;min-height:34px}
+.okmark{font-size:11px;color:var(--ok);align-self:center;font-family:var(--mono)}
+#opBody{overflow-y:auto;padding:12px 14px calc(16px + var(--sb));display:grid;gap:10px;align-content:start}
+.card{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;gap:9px}
+.ch{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.row2{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:13px}
+.row2 span:first-child{color:var(--ink-2)}
+#opBody textarea{background:var(--bg);border:1px solid var(--line-2);border-radius:9px;padding:10px;color:var(--ink);font:inherit;font-size:13px;resize:vertical}
 .toast{position:fixed;left:50%;bottom:calc(74px + var(--sb));transform:translateX(-50%) translateY(14px);background:var(--ink);color:#0B0F16;padding:10px 15px;border-radius:9px;font-size:13px;font-weight:600;z-index:40;opacity:0;transition:opacity .18s,transform .18s;pointer-events:none;max-width:calc(100vw - 28px);text-align:center}
 .toast.show{opacity:1;transform:translateX(-50%)}
 .loading{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:13px;z-index:9;text-align:center;padding:20px}
@@ -168,6 +204,9 @@ svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono
 <div id="app">
   <header>
     <div class="logo"><i>3A</i><span>3AHOME Building Test<small>BMS · BẢN MẪU VẬN HÀNH</small></span></div>
+    <button class="hbtn" id="btnSearch" aria-label="Tìm thiết bị">⌕</button>
+    <span class="conn ok" id="connState">—</span>
+    <span class="rolechip" id="roleChip">Vận hành</span>
     <div class="kpis">
       <div class="kpi ok"><b id="kOnline">—</b><span>Online</span></div>
       <div class="kpi warn"><b id="kWarn">0</b><span>Cảnh báo</span></div>
@@ -176,6 +215,11 @@ svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono
     </div>
   </header>
 
+  <div class="searchbar" id="searchBar" hidden>
+    <input id="qInput" placeholder="Tìm mã thiết bị hoặc tên phòng, ví dụ F10-03-FCU hoặc Phòng họp" autocomplete="off">
+    <button class="hbtn" id="qClose" aria-label="Đóng">×</button>
+    <div class="qres" id="qRes"></div>
+  </div>
   <main>
     <section class="pane" id="pane-tower">
       <div id="stage">
@@ -203,14 +247,14 @@ svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono
     </section>
 
     <section class="pane" id="pane-alarms" hidden><div id="alBody"></div></section>
-    <section class="pane" id="pane-perf" hidden><div id="pfBody"></div></section>
+    <section class="pane" id="pane-ops" hidden><div id="opBody"></div></section>
   </main>
 
   <nav class="tabbar">
     <button data-tab="tower" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"/><path d="M4 21h16M10 7h4M10 11h4M10 15h4"/></svg><span>Tổng quan</span></button>
     <button data-tab="floor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 10h8V3M11 10v11M11 14h10"/></svg><span>Tầng</span></button>
     <button data-tab="alarms"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a6 6 0 0 0-6 6v4l-2 3h16l-2-3V9a6 6 0 0 0-6-6z"/><path d="M10 20h4"/></svg><span>Sự cố</span><span class="badge" id="tabBadge" hidden>0</span></button>
-    <button data-tab="perf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 19h16"/><path d="M7 19V9M12 19V5M17 19v-7"/></svg><span>Hiệu năng</span></button>
+    <button data-tab="ops"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg><span>Vận hành</span></button>
   </nav>
 </div>
 

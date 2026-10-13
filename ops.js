@@ -8,6 +8,27 @@ const HEX={ok:0x2BD37A, warn:0xF5B23C, alarm:0xFF5A5A, off:0x5A6678};
 const ST_VN={ok:'Bình thường', warn:'Cảnh báo', alarm:'Sự cố', off:'Mất kết nối'};
 const worstOf = ds => ds.reduce((m,d)=>d.status==='alarm'?'alarm':((d.status==='warn'||d.status==='off')&&m!=='alarm'?(d.status==='off'?'off':'warn'):m),'ok');
 
+const view={tab:'tower', floor:'F10', sub:'plan', sel:null, alFilter:'all', ackFor:null};
+const OPS = { role:'operator', connected:true, lastTick:Date.now(), kwh:0,
+  sched:{on:'07:00', off:'18:00', mode:'auto', sat:true, sun:false},
+  handover:[{t:new Date(Date.now()-3600*1000*5), who:'Ca sáng', txt:'Đã kiểm tra chiller 1, dầu bình thường. FCU tầng 3 còn kêu, đã báo kỹ thuật.'}] };
+const ROLE_VN={operator:'Vận hành',tech:'Kỹ thuật',viewer:'Khách'};
+const hhmm = d => String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+function inSchedule(){ const now=new Date(), dow=now.getDay(), t=hhmm(now);
+  if (OPS.sched.mode==='on') return true; if (OPS.sched.mode==='off') return false;
+  if (dow===0 && !OPS.sched.sun) return false; if (dow===6 && !OPS.sched.sat) return false;
+  return t>=OPS.sched.on && t<OPS.sched.off; }
+function prioOf(d){
+  if (['SPF','SEF','MAF','CTRL','SD'].includes(d.t) && d.status==='alarm') return 1;      // hệ cứu hoả
+  if (d.t==='PANEL' && d.status==='alarm') return 1;                                       // mất pha / tủ điện
+  if (d.status==='off' && ['DDC','PANEL'].includes(d.t)) return 1;
+  if (d.status==='alarm') return inSchedule()?2:3;
+  return 3; }
+const PRIO_VN={1:'P1 khẩn',2:'P2 cần xử lý',3:'P3 theo dõi'};
+const canCmd = lvl => OPS.role==='tech' || (OPS.role==='operator' && lvl!=='tech');
+function initF3(){ if(initF3.done||!window.F3) return; initF3.done=true;
+  F3.init({devices, floorOf, HEX, worstOf, selected:()=>view.sel, onPick:d=>openDev(d)}); }
+
 // ---------- dữ liệu ----------
 const devices=[], alarms=[], auditLog=[]; let uid=0;
 const mk=o=>{o.id='d'+(uid++); o.hist=[]; o.status='ok'; devices.push(o); return o;};
@@ -59,11 +80,19 @@ function mainTxt(d){ switch(d.t){
   case 'FCU': return d.offline?'mất KN':(d.st.run?d.st.fan:'Tắt'); case 'DDC': return Math.round(d.st.cpu)+'%';
   case 'PANEL': return Math.round(d.st.amp)+' A'; case 'CTRL': return d.st.fd+' FD';
   case 'SD': return d.st.open?'Mở':'Đóng'; default: return d.st.run?Math.round(d.st.pa)+' Pa':'Dừng'; } }
-function pushAlarm(d){ alarms.unshift({dev:d,lvl:d.status,t:new Date(),
+function pushAlarm(d){ if (d.shelveUntil && Date.now()<d.shelveUntil) return;
+  alarms.unshift({dev:d,lvl:d.status,prio:prioOf(d),t:new Date(),
   msg:d.fault||(d.t==='TS'?`Lệch nhiệt độ ${(d.st.temp-d.st.sp).toFixed(1)}°C`:d.t==='CV'?'Van mở gần hết':d.t==='FCU'?'Chênh áp lọc gió cao':'Vượt ngưỡng')});
   if(alarms.length>80) alarms.pop(); }
 const logCmd=t=>{auditLog.unshift({t:new Date(),txt:t}); if(auditLog.length>40) auditLog.pop();};
-function tick(){ devices.forEach(d=>{ if(d.offline) return;
+function tick(){
+  if(!OPS.connected) return;                       // mô phỏng mất kết nối: dữ liệu đứng yên
+  OPS.lastTick=Date.now();
+  const open=inSchedule();
+  OPS.kwh += devices.filter(d=>d.t==='PANEL').reduce((s,d)=>s+d.st.amp*.38*1.73,0)*(1.5/3600);
+  devices.forEach(d=>{ if(d.offline) return;
+    if(d.t==='FCU' && !d.fault){ d.st.run=open; }
+    if(d.t==='TS') d.st.sp = open?24:28;
   switch(d.t){
     case 'TS':{const tg=d.st.sp+(d.drift||0); d.st.temp+=(tg-d.st.temp)*.12+rnd(-.09,.09);
       d.st.rh=clamp(d.st.rh+rnd(-.5,.5),45,72); d.st.co2=clamp(d.st.co2+rnd(-22,26),400,1500); break;}
@@ -79,9 +108,6 @@ devices.forEach(d=>{ d.status=statusOf(d); if(d.status!=='ok') pushAlarm(d); });
 alarms.forEach((a,i)=>a.t=new Date(Date.now()-(i*6+2)*60000));
 const floorDevs = id => devices.filter(d=>d.floor===id);
 
-const view={tab:'tower', floor:'F10', sub:'plan', sel:null};
-function initF3(){ if(initF3.done||!window.F3) return; initF3.done=true;
-  F3.init({devices, floorOf, HEX, worstOf, selected:()=>view.sel, onPick:d=>openDev(d)}); }
 // ---------- 3D: chỉ dùng cho tổng quan toà nhà ----------
 const stage=$('#stage');
 const renderer=new THREE.WebGLRenderer({antialias:true});
@@ -302,16 +328,55 @@ function renderFloor(){
   $('#flBad').querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openDev(devices.find(x=>x.id===b.dataset.id)));
   document.querySelectorAll('#flSub button').forEach(b=>b.classList.toggle('on', b.dataset.sub===view.sub));
 }
+function alarmList(){
+  const now=Date.now();
+  let L=alarms.filter(a=>!(a.dev.shelveUntil&&now<a.dev.shelveUntil));
+  if(view.alFilter==='un') L=L.filter(a=>!a.ack);
+  else if(view.alFilter==='p1') L=L.filter(a=>a.prio===1);
+  else if(view.alFilter==='shelved') L=alarms.filter(a=>a.dev.shelveUntil&&now<a.dev.shelveUntil);
+  return L.sort((a,b)=> (a.ack?1:0)-(b.ack?1:0) || a.prio-b.prio || b.t-a.t); }
 function renderAlarms(){
-  const un=alarms.filter(a=>!a.ack);
-  $('#alBody').innerHTML = (alarms.length?`<div class="list">${alarms.slice(0,30).map((a,i)=>`
-    <button class="item" data-id="${a.dev.id}"><span class="dot" style="background:${COL[a.lvl]}"></span>
-    <span class="t"><b>${a.msg}${a.ack?' · đã xác nhận':''}</b><span>${a.dev.tag} · ${floorOf(a.dev.floor).name}</span></span>
-    <span class="v">${a.t.toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}</span></button>`).join('')}</div>`
-    : '<p class="muted">Không có cảnh báo.</p>')
-    + `<div><div class="muted" style="margin:12px 0 6px">Nhật ký lệnh</div>${auditLog.length?auditLog.slice(0,12).map(l=>`<div class="logline"><em>${l.t.toLocaleTimeString('vi-VN')}</em> · ${l.txt}</div>`).join(''):'<p class="muted">Chưa có lệnh.</p>'}</div>`;
-  $('#alCount').textContent = un.length;
+  const un=alarms.filter(a=>!a.ack).length, p1=alarms.filter(a=>a.prio===1&&!a.ack).length;
+  const sh=alarms.filter(a=>a.dev.shelveUntil&&Date.now()<a.dev.shelveUntil).length;
+  const L=alarmList();
+  const chip=(k,lb,n)=>`<button class="fchip ${view.alFilter===k?'on':''}" data-f="${k}">${lb}${n!=null?` <i>${n}</i>`:''}</button>`;
+  $('#alBody').innerHTML = `
+    <div class="fchips">${chip('all','Tất cả',alarms.length)}${chip('un','Chưa xác nhận',un)}${chip('p1','P1 khẩn',p1)}${chip('shelved','Đang tạm ẩn',sh)}</div>
+    ${L.length?`<div class="list">${L.slice(0,40).map(a=>`
+      <div class="alrow p${a.prio} ${a.ack?'acked':''}">
+        <button class="alopen" data-id="${a.dev.id}">
+          <span class="pbadge p${a.prio}">P${a.prio}</span>
+          <span class="t"><b>${a.msg}</b><span>${a.dev.tag} · ${floorOf(a.dev.floor).name}${a.ackNote?` · ghi chú: ${a.ackNote}`:''}</span></span>
+          <span class="v">${a.t.toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}</span></button>
+        <div class="alacts">
+          ${a.ack?`<span class="okmark">✓ ${a.ackBy||''} xác nhận</span>`:`<button class="mini" data-ackopen="${a.dev.id}">Xác nhận</button>`}
+          ${a.dev.shelveUntil&&Date.now()<a.dev.shelveUntil?`<span class="okmark">tạm ẩn tới ${new Date(a.dev.shelveUntil).toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}</span>`:`<button class="mini" data-shelve="${a.dev.id}">Tạm ẩn 4h</button>`}
+        </div>
+        ${view.ackFor===a.dev.id?`<div class="ackbox"><input id="ackNote" placeholder="Ghi chú: đã gọi kỹ thuật, chờ vật tư…" autocomplete="off"><button class="mini on" data-ackdo="${a.dev.id}">Lưu</button><button class="mini" data-ackcancel="1">Bỏ</button></div>`:''}
+        </div>`).join('')}</div>`
+      : '<p class="muted">Không có cảnh báo nào khớp bộ lọc.</p>'}
+    <div><div class="muted" style="margin:12px 0 6px">Nhật ký lệnh điều khiển</div>
+      ${auditLog.length?auditLog.slice(0,14).map(l=>`<div class="logline"><em>${l.t.toLocaleTimeString('vi-VN')}</em> · ${l.txt}</div>`).join(''):'<p class="muted">Chưa có lệnh.</p>'}</div>`;
+  $('#alCount').textContent=un;
   $('#alBody').querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openDev(devices.find(x=>x.id===b.dataset.id)));
+  $('#alBody').querySelectorAll('[data-f]').forEach(b=>b.onclick=()=>{ view.alFilter=b.dataset.f; renderAlarms(); });
+  $('#alBody').querySelectorAll('[data-ackopen]').forEach(b=>b.onclick=()=>{
+    if(OPS.role==='viewer'){ toast('Vai trò Khách không xác nhận được'); return; }
+    view.ackFor=b.dataset.ackopen; renderAlarms(); const i=$('#ackNote'); if(i) i.focus(); });
+  $('#alBody').querySelectorAll('[data-ackcancel]').forEach(b=>b.onclick=()=>{ view.ackFor=null; renderAlarms(); });
+  $('#alBody').querySelectorAll('[data-ackdo]').forEach(b=>b.onclick=()=>{ const n=$('#ackNote'); ackAlarm(b.dataset.ackdo, n?n.value.trim():''); });
+  $('#alBody').querySelectorAll('[data-shelve]').forEach(b=>b.onclick=()=>shelve(b.dataset.shelve));
+}
+function ackAlarm(id, note){
+  if(OPS.role==='viewer'){ toast('Vai trò Khách không xác nhận được'); return; }
+  const d=devices.find(x=>x.id===id); view.ackFor=null;
+  alarms.filter(a=>a.dev===d&&!a.ack).forEach(a=>{ a.ack=true; a.ackNote=note||''; a.ackBy=ROLE_VN[OPS.role]; });
+  logCmd(`${d.tag} · xác nhận cảnh báo${note?' · '+note:''}`); renderAlarms(); renderHeader(); toast('Đã xác nhận');
+}
+function shelve(id){
+  if(OPS.role==='viewer'){ toast('Vai trò Khách không tạm ẩn được'); return; }
+  const d=devices.find(x=>x.id===id); d.shelveUntil=Date.now()+4*3600*1000;
+  logCmd(`${d.tag} · tạm ẩn cảnh báo 4 giờ`); renderAlarms(); toast('Đã tạm ẩn 4 giờ, hết hạn sẽ báo lại');
 }
 function renderHeader(){
   const on=devices.filter(d=>!d.offline).length;
@@ -319,7 +384,11 @@ function renderHeader(){
   $('#kWarn').textContent=devices.filter(d=>d.status==='warn').length;
   $('#kAlarm').textContent=devices.filter(d=>['alarm','off'].includes(d.status)).length;
   $('#kPower').textContent=Math.round(devices.filter(d=>d.t==='PANEL').reduce((s,d)=>s+d.st.amp*.38*1.73,0));
-  const n=devices.filter(d=>d.status!=='ok').length, b=$('#tabBadge'); b.hidden=!n; b.textContent=n;
+  const n=alarms.filter(a=>!a.ack&&!(a.dev.shelveUntil&&Date.now()<a.dev.shelveUntil)).length;
+  const b=$('#tabBadge'); b.hidden=!n; b.textContent=n;
+  const age=Math.round((Date.now()-OPS.lastTick)/1000);
+  const st=$('#connState'); if(st){ st.textContent = OPS.connected?`cập nhật ${age}s trước`:'MẤT KẾT NỐI'; st.className='conn '+(OPS.connected?(age>20?'stale':'ok'):'bad'); }
+  const rl=$('#roleChip'); if(rl) rl.textContent=ROLE_VN[OPS.role];
 }
 function renderRail(){
   $('#floors').innerHTML = BLD.floors.slice().reverse().map(f=>{
@@ -329,7 +398,7 @@ function renderRail(){
 }
 // ---------- điều hướng ----------
 function setTab(t){ view.tab=t;
-  ['tower','floor','alarms','perf'].forEach(k=>{ const p=$('#pane-'+k); if(p) p.hidden = k!==t; });
+  ['tower','floor','alarms','ops'].forEach(k=>{ const p=$('#pane-'+k); if(p) p.hidden = k!==t; });
   document.querySelectorAll('.tabbar button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
   const rail=$('#floors'); rail.hidden = t!=='floor' && t!=='tower';
   const host = t==='tower' ? $('#stage') : $('#pane-floor');
@@ -337,7 +406,7 @@ function setTab(t){ view.tab=t;
   if(t==='tower'){ dirty=true; resize3D(); fit3D(); renderTower(); }
   if(t==='floor') renderFloor();
   if(t==='alarms') renderAlarms();
-  if(t==='perf') renderPerf();
+  if(t==='ops') renderOps();
   renderRail();
 }
 function openFloor(fid){ view.floor=fid; setTab('floor'); }
@@ -393,6 +462,9 @@ function renderSheet(d){
   $('#shBody').querySelectorAll('[data-cmd]').forEach(b=>b.onclick=()=>cmd(d,b.dataset.cmd));
 }
 function cmd(d,c){
+  const needTech = ['fanon','fanoff'].includes(c);
+  if (OPS.role==='viewer'){ toast('Vai trò Khách chỉ được xem'); return; }
+  if (needTech && !canCmd('tech')){ toast('Lệnh quạt cần vai trò Kỹ thuật'); return; }
   if(c==='sp-'||c==='sp+'){ d.st.sp=clamp(d.st.sp+(c==='sp+'?.5:-.5),18,30); logCmd(`${d.tag} · setpoint ${d.st.sp.toFixed(1)}°C`); toast('Đã gửi lệnh setpoint'); }
   else if(c.startsWith('fan:')){ const v=c.slice(4); d.st.run=v!=='Tắt'; if(d.st.run) d.st.fan=v; logCmd(`${d.tag} · quạt ${v}`); toast('Đã gửi lệnh quạt '+v); }
   else if(c==='fanon'){ d.st.run=true; d.st.pa=45; logCmd(`${d.tag} · chạy quạt`); toast('Đã gửi lệnh chạy'); }
@@ -401,6 +473,62 @@ function cmd(d,c){
   d.status=statusOf(d); refresh(); renderSheet(d);
 }
 // ---------- hiệu năng ----------
+function renderOps(){
+  const open=inSchedule(), now=new Date();
+  const svcFCU = devices.filter(d=>d.t==='FCU').sort((a,b)=>b.st.filter-a.st.filter).slice(0,6);
+  const runners = devices.filter(d=>d.st.hours!=null).sort((a,b)=>b.st.hours-a.st.hours).slice(0,5);
+  const kwNow = Math.round(devices.filter(d=>d.t==='PANEL').reduce((s,d)=>s+d.st.amp*.38*1.73,0));
+  const byFloor = BLD.floors.map(f=>({f, kw: devices.filter(d=>d.floor===f.id&&d.t==='PANEL').reduce((s,d)=>s+d.st.amp*.38*1.73,0)}))
+    .filter(x=>x.kw>0).sort((a,b)=>b.kw-a.kw).slice(0,4);
+  $('#opBody').innerHTML = `
+  <div class="card"><div class="ch">Vai trò đang dùng</div>
+    <div class="seg">${Object.entries(ROLE_VN).map(([k,v])=>`<button data-role="${k}" class="${OPS.role===k?'on':''}">${v}</button>`).join('')}</div>
+    <p class="muted">Khách chỉ xem. Vận hành được đặt nhiệt độ, bật tắt FCU, xác nhận cảnh báo. Kỹ thuật thêm quyền chạy/dừng quạt tăng áp, hút khói và đổi lịch.</p></div>
+
+  <div class="card"><div class="ch">Lịch vận hành</div>
+    <div class="row2"><span>Giờ chạy</span><b class="mono">${OPS.sched.on} – ${OPS.sched.off}</b></div>
+    <div class="row2"><span>Hiện tại</span><b style="color:${open?'var(--ok)':'var(--muted)'}">${open?'Trong giờ · thiết bị chạy':'Ngoài giờ · FCU tắt, setpoint 28°C'}</b></div>
+    <div class="seg">${[['auto','Theo lịch'],['on','Ép chạy'],['off','Ép tắt']].map(([k,v])=>`<button data-mode="${k}" class="${OPS.sched.mode===k?'on':''}">${v}</button>`).join('')}</div>
+    <div class="row2"><span>Cuối tuần</span><span>
+      <button class="mini ${OPS.sched.sat?'on':''}" data-day="sat">Thứ 7</button>
+      <button class="mini ${OPS.sched.sun?'on':''}" data-day="sun">Chủ nhật</button></span></div>
+    <p class="muted">Ngoài giờ, cảnh báo nhiệt độ hạ xuống P3 để không làm phiền ca trực đêm.</p></div>
+
+  <div class="card"><div class="ch">Bảo trì sắp tới</div>
+    <div class="list">${svcFCU.map(d=>`<button class="item" data-id="${d.id}">
+      <span class="dot" style="background:${d.st.filter>85?COL.warn:COL.ok}"></span>
+      <span class="t"><b>${floorOf(d.floor).name} · ${(floorOf(d.floor).rooms[d.room]||{n:''}).n}</b><span>${d.tag}</span></span>
+      <span class="v">lọc ${Math.round(d.st.filter)}%</span></button>`).join('')}</div>
+    <div class="ch" style="margin-top:8px">Giờ chạy cao nhất</div>
+    <div class="list">${runners.map(d=>`<button class="item" data-id="${d.id}">
+      <span class="dot" style="background:${COL[d.status]}"></span>
+      <span class="t"><b>${d.tag}</b><span>${floorOf(d.floor).name}</span></span>
+      <span class="v">${d.st.hours.toLocaleString('vi-VN')} h</span></button>`).join('')}</div></div>
+
+  <div class="card"><div class="ch">Năng lượng</div>
+    <div class="row2"><span>Công suất tức thời</span><b class="mono">${kwNow} kW</b></div>
+    <div class="row2"><span>Điện năng từ khi mở app</span><b class="mono">${OPS.kwh.toFixed(2)} kWh</b></div>
+    ${byFloor.map(x=>`<div class="row2"><span>${x.f.name}</span><b class="mono">${Math.round(x.kw)} kW</b></div>`).join('')}</div>
+
+  <div class="card"><div class="ch">Bàn giao ca</div>
+    <textarea id="hoTxt" rows="2" placeholder="Ghi lại việc đã làm, việc còn dở, cảnh báo cần theo dõi…"></textarea>
+    <button class="btn full" id="hoAdd">Ghi vào sổ bàn giao</button>
+    ${OPS.handover.map(h=>`<div class="logline"><em>${h.t.toLocaleString('vi-VN',{hour:'2-digit',minute:'2-digit',day:'2-digit',month:'2-digit'})} · ${h.who}</em><br>${h.txt}</div>`).join('')}</div>
+
+  <div class="card"><div class="ch">Kết nối & hiệu năng</div>
+    <div class="row2"><span>Trạng thái</span><b style="color:${OPS.connected?'var(--ok)':'var(--alarm)'}">${OPS.connected?'Đang kết nối':'Mất kết nối máy chủ'}</b></div>
+    <button class="btn full" id="opOffline">${OPS.connected?'Mô phỏng mất kết nối':'Kết nối lại'}</button>
+    <button class="btn full" id="opPerf">Đo khung hình 12 giây</button>
+    <div id="benchOut"></div></div>`;
+  $('#opBody').querySelectorAll('[data-role]').forEach(b=>b.onclick=()=>{ OPS.role=b.dataset.role; renderOps(); renderHeader(); toast('Vai trò: '+ROLE_VN[OPS.role]); });
+  $('#opBody').querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{ if(!canCmd('tech')){toast('Chỉ vai trò Kỹ thuật đổi được lịch');return;} OPS.sched.mode=b.dataset.mode; logCmd('Lịch vận hành · '+b.textContent); renderOps(); });
+  $('#opBody').querySelectorAll('[data-day]').forEach(b=>b.onclick=()=>{ if(!canCmd('tech')){toast('Chỉ vai trò Kỹ thuật đổi được lịch');return;} const k=b.dataset.day; OPS.sched[k]=!OPS.sched[k]; logCmd('Lịch cuối tuần · '+b.textContent+(OPS.sched[k]?' bật':' tắt')); renderOps(); });
+  $('#opBody').querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>openDev(devices.find(x=>x.id===b.dataset.id)));
+  $('#hoAdd').onclick=()=>{ const t=$('#hoTxt').value.trim(); if(!t) return;
+    OPS.handover.unshift({t:new Date(), who:ROLE_VN[OPS.role], txt:t}); renderOps(); toast('Đã ghi sổ bàn giao'); };
+  $('#opOffline').onclick=()=>{ OPS.connected=!OPS.connected; renderOps(); renderHeader(); toast(OPS.connected?'Đã kết nối lại':'Đang mô phỏng mất kết nối, dữ liệu đứng yên'); };
+  $('#opPerf').onclick=runBench;
+}
 function renderPerf(){
   const info=renderer.info.render;
   $('#pfBody').innerHTML=`<div class="bench"><p class="muted">Đo khung hình của màn 3D tổng quan. Chạy 12 giây, đừng chạm màn hình.</p>
@@ -415,10 +543,10 @@ function renderPerf(){
 }
 function runBench(){
   if(bench.on) return; if(document.hidden){ toast('Mở app ở chế độ hiển thị rồi đo'); return; }
-  const back=view.tab; setTab('tower');
+  setTab('tower');
   samples=[]; bench.on=true; const bar=$('#benchBar'); if(bar){bar.hidden=false;}
   const t0=performance.now(), dur=12000;
-  setTimeout(()=>{ bench.on=false; setTab('perf');
+  setTimeout(()=>{ bench.on=false; setTab('ops');
     const s=samples.filter(x=>x>0&&x<500).sort((a,b)=>a-b); if(!s.length) return;
     const avg=s.reduce((a,b)=>a+b,0)/s.length, p95=s[Math.floor(s.length*.95)], p99=s[Math.floor(s.length*.99)];
     const fps=1000/avg, info=renderer.info.render;
@@ -431,15 +559,37 @@ function runBench(){
       body:JSON.stringify({fpsAvg:+fps.toFixed(1),frameMs:+avg.toFixed(2),frames:s.length,calls:info.calls,tris:info.triangles,ua:navigator.userAgent,at:new Date().toISOString()})}).catch(()=>{});}catch(e){}
   },dur);
 }
+// ---------- tìm kiếm nhanh ----------
+const sBar=$('#searchBar'), qIn=$('#qInput'), qRes=$('#qRes');
+$('#btnSearch').onclick=()=>{ sBar.hidden=!sBar.hidden; if(!sBar.hidden){ qIn.value=''; qRes.innerHTML=''; qIn.focus(); } };
+$('#qClose').onclick=()=>{ sBar.hidden=true; };
+qIn.addEventListener('input',()=>{
+  const q=qIn.value.trim().toLowerCase(); if(q.length<2){ qRes.innerHTML=''; return; }
+  const hit=[];
+  devices.forEach(d=>{ if(hit.length>=25) return;
+    const f=floorOf(d.floor), r=f.rooms[d.room];
+    const hay=`${d.tag} ${f.name} ${r?r.n:''} ${(DEV_INFO[d.t]||{name:''}).name}`.toLowerCase();
+    if(hay.includes(q)) hit.push(d); });
+  qRes.innerHTML = hit.length? hit.map(d=>`<button data-id="${d.id}">
+      <span class="dot" style="width:9px;height:9px;border-radius:50%;background:${COL[d.status]}"></span>
+      <span style="flex:1"><b>${d.tag}</b><br><span>${floorOf(d.floor).name} · ${(floorOf(d.floor).rooms[d.room]||{n:''}).n}</span></span>
+      <span style="font-family:var(--mono);font-size:12px;color:var(--ink-2)">${mainTxt(d)}</span></button>`).join('')
+    : '<button disabled><span class="muted">Không tìm thấy</span></button>';
+  qRes.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>{ sBar.hidden=true; openDev(devices.find(x=>x.id===b.dataset.id)); });
+});
+document.addEventListener('keydown',e=>{ if(e.key==='Escape') sBar.hidden=true; });
+
 // ---------- vòng cập nhật ----------
 function refresh(){ paint3D(); renderHeader(); renderRail();
   if(view.tab==='tower') renderTower();
   else if(view.tab==='floor') renderFloor();
   else if(view.tab==='alarms') renderAlarms();
+  else if(view.tab==='ops') renderOps();
   if(view.tab==='floor' && view.sub==='3d' && window.F3 && F3.isBuilt()===view.floor) F3.paint();
   if(view.sel && $('#sheet').classList.contains('open')) renderSheet(view.sel); }
 paint3D(); resize3D(); fit3D(); setTab('tower'); refresh();
 $('#loading').remove();
 setInterval(()=>{ if(document.hidden) return; tick(); refresh(); },1500);
+setInterval(()=>{ if(!document.hidden) renderHeader(); },1000);
 if(/[?&]bench=1/.test(location.search)) setTimeout(()=>{ setTab('perf'); setTimeout(runBench,600); },800);
 };
