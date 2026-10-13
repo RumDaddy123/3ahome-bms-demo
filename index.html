@@ -1,5 +1,3 @@
-<!doctype html>
-<html lang="vi">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
 <meta name="theme-color" content="#0B0F16">
@@ -113,7 +111,7 @@ svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono
 .bench td:last-child{text-align:right;font-family:var(--mono)}.bench td:first-child{color:var(--muted)}
 .bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden}.bar i{display:block;height:100%;background:var(--accent)}
 /* ---- tabbar + sheet ---- */
-.tabbar{display:grid;grid-template-columns:repeat(4,1fr);background:var(--panel);border-top:1px solid var(--line);padding-bottom:var(--sb)}
+.tabbar{display:grid;grid-template-columns:repeat(5,1fr);background:var(--panel);border-top:1px solid var(--line);padding-bottom:var(--sb)}
 .tabbar button{padding:8px 2px;display:grid;gap:3px;justify-items:center;font-size:10.5px;font-weight:600;color:var(--muted);min-height:50px;position:relative}
 .tabbar button.on{color:var(--accent)}.tabbar svg{width:20px;height:20px}
 .tabbar .badge{position:absolute;top:4px;left:50%;margin-left:3px;background:var(--alarm);color:#fff;border-radius:9px;font-size:9.5px;padding:1px 5px;font-weight:700}
@@ -182,6 +180,23 @@ svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono
 .ackbox{display:flex;gap:6px;padding:0 12px 10px}
 .ackbox input{flex:1;background:var(--bg);border:1px solid var(--line-2);border-radius:8px;padding:8px 10px;font-size:12.5px;min-height:34px}
 .okmark{font-size:11px;color:var(--ok);align-self:center;font-family:var(--mono)}
+#fdBody{overflow-y:auto;padding:12px 14px calc(16px + var(--sb));display:grid;gap:10px;align-content:start}
+.bigrow{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;text-align:center}
+.bigrow b{display:block;font-size:20px;font-variant-numeric:tabular-nums}
+.bigrow span{font-size:10.5px;color:var(--muted)}
+.wo{display:flex;align-items:center;gap:9px;width:100%;text-align:left;background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:9px 10px;margin-top:7px;color:inherit}
+.wo b{font-size:11.5px;color:var(--accent)} .wo span{flex:1;font-size:13px}
+.wo em{display:block;font-style:normal;font-family:var(--mono);font-size:10.5px;color:var(--muted);margin-top:2px}
+.wo i{font-style:normal;font-size:11px;color:var(--warn)} .wo.done i{color:var(--ok)} .wo.done b{opacity:.6}
+.fcard{background:var(--panel-2);border:1px solid var(--line);border-left:3px solid var(--warn);border-radius:12px;padding:11px 12px;display:grid;gap:6px}
+.fcard.sev1{border-left-color:var(--alarm)} .fcard.sev2{border-left-color:var(--warn)} .fcard.sev3{border-left-color:#8EC5FF}
+.fh{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.fh b{font-size:14px;flex:1;min-width:140px}
+.waste{font-family:var(--mono);font-size:11.5px;color:var(--warn);white-space:nowrap}
+.floc{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.fev{font-size:12.5px;color:var(--ink-2);background:var(--bg);border-radius:8px;padding:7px 9px}
+.ffix{font-size:12.5px;color:var(--ink-2)}
+.fticket{font-size:11.5px;font-family:var(--mono);color:var(--ok)}
 #opBody{overflow-y:auto;padding:12px 14px calc(16px + var(--sb));display:grid;gap:10px;align-content:start}
 .card{background:var(--panel-2);border:1px solid var(--line);border-radius:12px;padding:12px;display:grid;gap:9px}
 .ch{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
@@ -193,7 +208,7 @@ svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono
 .loading{position:absolute;inset:0;display:grid;place-items:center;color:var(--muted);font-size:13px;z-index:9;text-align:center;padding:20px}
 @media (min-width:980px){
   #app{grid-template-rows:auto auto 1fr}
-  .tabbar{grid-template-columns:repeat(4,150px);justify-content:start;border-top:0;border-bottom:1px solid var(--line);order:-1}
+  .tabbar{grid-template-columns:repeat(5,140px);justify-content:start;border-top:0;border-bottom:1px solid var(--line);order:-1}
   #pane-tower{grid-template-rows:1fr;grid-template-columns:1fr 390px}
   #ovBody{border-top:0;border-left:1px solid var(--line)}
   .sheet{left:auto;right:14px;bottom:14px;width:390px;border-radius:16px;max-height:calc(100vh - 160px);border:1px solid var(--line-2)}
@@ -247,6 +262,7 @@ svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono
     </section>
 
     <section class="pane" id="pane-alarms" hidden><div id="alBody"></div></section>
+    <section class="pane" id="pane-fdd" hidden><div id="fdBody"></div></section>
     <section class="pane" id="pane-ops" hidden><div id="opBody"></div></section>
   </main>
 
@@ -254,6 +270,7 @@ svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono
     <button data-tab="tower" class="on"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M6 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16"/><path d="M4 21h16M10 7h4M10 11h4M10 15h4"/></svg><span>Tổng quan</span></button>
     <button data-tab="floor"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 10h8V3M11 10v11M11 14h10"/></svg><span>Tầng</span></button>
     <button data-tab="alarms"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3a6 6 0 0 0-6 6v4l-2 3h16l-2-3V9a6 6 0 0 0-6-6z"/><path d="M10 20h4"/></svg><span>Sự cố</span><span class="badge" id="tabBadge" hidden>0</span></button>
+    <button data-tab="fdd"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 12h4l3 7 4-14 3 7h4"/></svg><span>Chẩn đoán</span><span class="badge" id="fdBadge" hidden>0</span></button>
     <button data-tab="ops"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1"/></svg><span>Vận hành</span></button>
   </nav>
 </div>
@@ -270,6 +287,7 @@ svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono
 <script src="plan.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="floor3d.js"></script>
+<script src="fdd.js"></script>
 <script src="ops.js"></script>
 <script>
 (function(){ var el=document.getElementById('loading');
@@ -277,5 +295,3 @@ svg.riser .rr{fill:#A6B0C0;font-size:10px;text-anchor:end;font-family:var(--mono
   try{ window.__initBMS(); }catch(e){ el.textContent='Lỗi khởi tạo: '+e.message; console.error(e); }
 })();
 </script>
-
-</html>

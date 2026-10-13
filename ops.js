@@ -62,6 +62,11 @@ BLD.floors.forEach(f=>{
   if(fc[24]){fc[24].offline=true; fc[24].fault='Mất kết nối MSTP';}
   const ts=f('TS'); if(ts[9]) ts[9].drift=3.2; if(ts[31]) ts[31].drift=1.8;
   const p=devices.find(d=>d.tag==='TĐ.TG1-3'); if(p) p.fault='Mất pha L2';
+  if(ts[17]){ ts[17].flat=true; ts[17].st.temp=23.6; }            // cảm biến treo giá trị
+  const nw=fc[14]; if(nw){ const v=devices.find(x=>x.t==='CV'&&x.floor===nw.floor&&x.room===nw.room);
+    if(v){ v.fault='Van không mở'; v.st.open=2; } }                // FCU chạy mà không có nước lạnh
+  const sp=devices.find(d=>d.t==='SPF'); if(sp){ sp.st.run=true; sp.st.pa=5; sp.stuckPa=true; }
+  const ts2=f('TS'); if(ts2[41]) ts2[41].st.co2=1280;              // thiếu khí tươi
 })();
 function statusOf(d){ if(d.offline) return 'off';
   switch(d.t){
@@ -94,13 +99,14 @@ function tick(){
     if(d.t==='FCU' && !d.fault){ d.st.run=open; }
     if(d.t==='TS') d.st.sp = open?24:28;
   switch(d.t){
-    case 'TS':{const tg=d.st.sp+(d.drift||0); d.st.temp+=(tg-d.st.temp)*.12+rnd(-.09,.09);
+    case 'TS':{const tg=d.st.sp+(d.drift||0); if(!d.flat) d.st.temp+=(tg-d.st.temp)*.12+rnd(-.09,.09);
       d.st.rh=clamp(d.st.rh+rnd(-.5,.5),45,72); d.st.co2=clamp(d.st.co2+rnd(-22,26),400,1500); break;}
     case 'CV': if(!d.fault) d.st.open=clamp(d.st.open+rnd(-4,4),8,95); d.st.dp=clamp(d.st.dp+rnd(-1.5,1.5),30,70); break;
     case 'FCU': if(!d.fault) d.st.filter=clamp(d.st.filter+.02,5,99); break;
     case 'DDC': d.st.cpu=clamp(d.st.cpu+rnd(-3,3),10,92); break;
     case 'PANEL': d.st.amp=clamp(d.st.amp+rnd(-2,2),6,52); d.st.v=clamp(d.st.v+rnd(-2,2),370,400); break;
-    case 'SPF': case 'SEF': case 'MAF': case 'EF': d.st.pa = d.st.run?clamp((d.st.pa||40)+rnd(-3,3),35,62):clamp(d.st.pa*.8,0,6); break;
+    case 'SPF': case 'SEF': case 'MAF': case 'EF': d.st.pa = d.stuckPa?clamp(d.st.pa+rnd(-1,1),2,9)
+        : d.st.run?clamp((d.st.pa||40)+rnd(-3,3),35,62):clamp(d.st.pa*.8,0,6); break;
   }
   const prev=d.status; d.status=statusOf(d); if(prev!==d.status&&d.status!=='ok') pushAlarm(d);
   const v=mainVal(d); if(v!=null){ d.hist.push(v); if(d.hist.length>90) d.hist.shift(); } }); }
@@ -307,10 +313,17 @@ function renderTower(){
           <i>${al?al+' sự cố':''}${al&&(x.ds.length-al)?' · ':''}${x.ds.length-al?(x.ds.length-al)+' cảnh báo':''}</i></button>`;
       }).join('') : '<p class="muted">Toàn bộ thiết bị bình thường.</p>'}
     </div>
+    <div class="ovsec"><div class="ovh">Chẩn đoán tự động</div>
+      ${(()=>{ const st=window.FDD?FDD.stats():{n:0,vnd:0};
+        return st.n? `<button class="frow" id="goFdd"><span class="dot" style="background:var(--warn)"></span><b>${st.n} lỗi</b>
+          <span class="fm">ước tính ${FDD.vnd(st.vnd)} đồng/tháng</span><i>xem →</i></button>`
+        : '<p class="muted">Chưa phát hiện lỗi nào.</p>'; })()}
+    </div>
     <div class="ovsec"><div class="ovh">Thiết bị theo loại</div>
       <div class="tgrid">${Object.entries(byType).map(([k,v])=>`<div class="tcell ${v.bad?'bad':''}"><b>${v.n}</b><span>${(DEV_INFO[k]||{name:k}).name.split('(')[0].trim()}</span>${v.bad?`<i>${v.bad}</i>`:''}</div>`).join('')}</div>
     </div>`;
   $('#ovBody').querySelectorAll('[data-floor]').forEach(b=>b.onclick=()=>openFloor(b.dataset.floor));
+  const gf=$('#goFdd'); if(gf) gf.onclick=()=>setTab('fdd');
 }
 function renderFloor(){
   const f=floorOf(view.floor), ds=floorDevs(view.floor);
@@ -398,7 +411,7 @@ function renderRail(){
 }
 // ---------- điều hướng ----------
 function setTab(t){ view.tab=t;
-  ['tower','floor','alarms','ops'].forEach(k=>{ const p=$('#pane-'+k); if(p) p.hidden = k!==t; });
+  ['tower','floor','alarms','fdd','ops'].forEach(k=>{ const p=$('#pane-'+k); if(p) p.hidden = k!==t; });
   document.querySelectorAll('.tabbar button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
   const rail=$('#floors'); rail.hidden = t!=='floor' && t!=='tower';
   const host = t==='tower' ? $('#stage') : $('#pane-floor');
@@ -406,6 +419,7 @@ function setTab(t){ view.tab=t;
   if(t==='tower'){ dirty=true; resize3D(); fit3D(); renderTower(); }
   if(t==='floor') renderFloor();
   if(t==='alarms') renderAlarms();
+  if(t==='fdd') renderFDD();
   if(t==='ops') renderOps();
   renderRail();
 }
@@ -481,6 +495,15 @@ function renderOps(){
   const byFloor = BLD.floors.map(f=>({f, kw: devices.filter(d=>d.floor===f.id&&d.t==='PANEL').reduce((s,d)=>s+d.st.amp*.38*1.73,0)}))
     .filter(x=>x.kw>0).sort((a,b)=>b.kw-a.kw).slice(0,4);
   $('#opBody').innerHTML = `
+  ${(()=>{ if(!window.FDD) return '';
+    const T=FDD.all().filter(f=>f.ticket).sort((x,y)=>(x.ticket.done?1:0)-(y.ticket.done?1:0)||x.rule.sev-y.rule.sev);
+    return `<div class="card"><div class="ch">Phiếu công việc (${T.filter(t=>!t.ticket.done).length} đang mở)</div>
+      ${T.length? T.map(f=>`<button class="wo ${f.ticket.done?'done':''}" data-wo="${f.id}">
+          <b class="mono">${f.ticket.no}</b>
+          <span>${f.rule.name}<em>${f.dev.tag} · ${floorOf(f.dev.floor).name} · giao ${f.ticket.who}</em></span>
+          <i>${f.ticket.done?'✓ đóng':'đang mở'}</i></button>`).join('')
+        : '<p class="muted">Chưa có phiếu nào. Mở thẻ Chẩn đoán để tạo phiếu từ lỗi phát hiện được.</p>'}</div>`; })()}
+
   <div class="card"><div class="ch">Vai trò đang dùng</div>
     <div class="seg">${Object.entries(ROLE_VN).map(([k,v])=>`<button data-role="${k}" class="${OPS.role===k?'on':''}">${v}</button>`).join('')}</div>
     <p class="muted">Khách chỉ xem. Vận hành được đặt nhiệt độ, bật tắt FCU, xác nhận cảnh báo. Kỹ thuật thêm quyền chạy/dừng quạt tăng áp, hút khói và đổi lịch.</p></div>
@@ -520,6 +543,9 @@ function renderOps(){
     <button class="btn full" id="opOffline">${OPS.connected?'Mô phỏng mất kết nối':'Kết nối lại'}</button>
     <button class="btn full" id="opPerf">Đo khung hình 12 giây</button>
     <div id="benchOut"></div></div>`;
+  $('#opBody').querySelectorAll('[data-wo]').forEach(b=>b.onclick=()=>{ view.fddCat='all'; setTab('fdd');
+    const el=$('#fdBody').querySelector(`[data-close="${b.dataset.wo}"],[data-ticket="${b.dataset.wo}"]`);
+    if(el) el.closest('.fcard').scrollIntoView({block:'center'}); });
   $('#opBody').querySelectorAll('[data-role]').forEach(b=>b.onclick=()=>{ OPS.role=b.dataset.role; renderOps(); renderHeader(); toast('Vai trò: '+ROLE_VN[OPS.role]); });
   $('#opBody').querySelectorAll('[data-mode]').forEach(b=>b.onclick=()=>{ if(!canCmd('tech')){toast('Chỉ vai trò Kỹ thuật đổi được lịch');return;} OPS.sched.mode=b.dataset.mode; logCmd('Lịch vận hành · '+b.textContent); renderOps(); });
   $('#opBody').querySelectorAll('[data-day]').forEach(b=>b.onclick=()=>{ if(!canCmd('tech')){toast('Chỉ vai trò Kỹ thuật đổi được lịch');return;} const k=b.dataset.day; OPS.sched[k]=!OPS.sched[k]; logCmd('Lịch cuối tuần · '+b.textContent+(OPS.sched[k]?' bật':' tắt')); renderOps(); });
@@ -559,6 +585,56 @@ function runBench(){
       body:JSON.stringify({fpsAvg:+fps.toFixed(1),frameMs:+avg.toFixed(2),frames:s.length,calls:info.calls,tris:info.triangles,ua:navigator.userAgent,at:new Date().toISOString()})}).catch(()=>{});}catch(e){}
   },dur);
 }
+// ---------- chẩn đoán lỗi tự động ----------
+let fddIdx=null;
+const FDDCTX = {
+  inSchedule, sched:()=>`${OPS.sched.on}–${OPS.sched.off}`,
+  sibling:(d,t)=>(fddIdx.get(d.floor)||[]).find(x=>x.room===d.room&&x.t===t),
+  peers:(d)=>(fddIdx.get(d.floor)||[]).filter(x=>x.t===d.t&&x!==d&&!x.offline),
+};
+function runFDD(){ if(!window.FDD) return;
+  fddIdx=new Map(); devices.forEach(d=>{ let a=fddIdx.get(d.floor); if(!a) fddIdx.set(d.floor,a=[]); a.push(d); });
+  FDD.evaluate(devices, FDDCTX); }
+function renderFDD(){
+  const st=FDD.stats(), L=FDD.list(view.fddCat||'all');
+  const chip=(k,lb,n)=>`<button class="fchip ${(view.fddCat||'all')===k?'on':''}" data-fc="${k}">${lb}${n!=null?` <i>${n}</i>`:''}</button>`;
+  $('#fdBody').innerHTML = `
+    <div class="card"><div class="ch">Tổng hợp</div>
+      <div class="bigrow"><div><b>${st.n}</b><span>lỗi đang mở</span></div>
+        <div><b>${st.kwh}</b><span>kWh lãng phí/tháng</span></div>
+        <div><b>${FDD.vnd(st.vnd)}</b><span>đồng/tháng</span></div></div>
+      <p class="muted">Ước tính theo giá ${FDD.GIA_DIEN.toLocaleString('vi-VN')} đ/kWh, 26 ngày làm việc. Ngưỡng thời gian trong bản mẫu rút ngắn còn vài giây để thấy ngay; ngoài thực tế đặt theo phút.</p></div>
+    <div class="fchips">${chip('all','Tất cả',st.n)}${st.byCat.map(c=>chip(c.k,FDD.CAT[c.k].name,c.n)).join('')}${chip('ignored','Đã bỏ qua')}</div>
+    ${L.length? L.map(f=>{
+      const d=f.dev, fl=floorOf(d.floor), r=fl.rooms[d.room];
+      return `<div class="fcard sev${f.rule.sev}">
+        <div class="fh"><span class="pbadge p${f.rule.sev}">${f.rule.sev===1?'Nặng':f.rule.sev===2?'Vừa':'Nhẹ'}</span>
+          <b>${f.rule.name}</b>
+          ${f.kwh?`<span class="waste">${FDD.vnd(f.kwh*FDD.GIA_DIEN)} đ/tháng</span>`:''}</div>
+        <div class="floc">${d.tag} · ${fl.name}${r?' · '+r.n:''} · phát hiện ${Math.round((Date.now()-f.first)/1000)}s trước</div>
+        <div class="fev">Bằng chứng: ${f.ev}</div>
+        <div class="ffix">Khuyến nghị: ${f.rule.fix}</div>
+        ${f.ticket?`<div class="fticket">${f.ticket.done?'✓ Đã đóng':'📋 Phiếu'} ${f.ticket.no} · ${f.ticket.who} · ${f.ticket.at.toLocaleTimeString('vi-VN',{hour:'2-digit',minute:'2-digit'})}</div>`:''}
+        <div class="alacts">
+          <button class="mini" data-open="${d.id}">Mở thiết bị</button>
+          ${f.ticket? (f.ticket.done?'':`<button class="mini on" data-close="${f.id}">Đóng phiếu</button>`) : `<button class="mini on" data-ticket="${f.id}">Tạo phiếu</button>`}
+          ${f.ignored?`<button class="mini" data-unig="${f.id}">Bỏ qua lại</button>`:`<button class="mini" data-ig="${f.id}">Bỏ qua</button>`}
+        </div></div>`; }).join('')
+      : '<p class="muted">Không có lỗi nào trong nhóm này. Hệ thống đang chạy đúng.</p>'}`;
+  $('#fdBody').querySelectorAll('[data-fc]').forEach(b=>b.onclick=()=>{ view.fddCat=b.dataset.fc; renderFDD(); });
+  $('#fdBody').querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openDev(devices.find(x=>x.id===b.dataset.open)));
+  $('#fdBody').querySelectorAll('[data-ticket]').forEach(b=>b.onclick=()=>{
+    if(OPS.role==='viewer'){ toast('Vai trò Khách không tạo phiếu được'); return; }
+    const t=FDD.makeTicket(b.dataset.ticket, ROLE_VN[OPS.role]);
+    logCmd(`Tạo phiếu ${t.no} · ${FDD.get(b.dataset.ticket).rule.name} · ${FDD.get(b.dataset.ticket).dev.tag}`);
+    renderFDD(); toast('Đã tạo '+t.no); });
+  $('#fdBody').querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>{ FDD.closeTicket(b.dataset.close);
+    logCmd(`Đóng phiếu ${FDD.get(b.dataset.close).ticket.no}`); renderFDD(); toast('Đã đóng phiếu'); });
+  $('#fdBody').querySelectorAll('[data-ig]').forEach(b=>b.onclick=()=>{ FDD.ignore(b.dataset.ig); renderFDD(); toast('Đã bỏ qua lỗi này'); });
+  $('#fdBody').querySelectorAll('[data-unig]').forEach(b=>b.onclick=()=>{ FDD.unignore(b.dataset.unig); renderFDD(); });
+  const b=$('#fdBadge'); if(b){ b.hidden=!st.n; b.textContent=st.n; }
+}
+
 // ---------- tìm kiếm nhanh ----------
 const sBar=$('#searchBar'), qIn=$('#qInput'), qRes=$('#qRes');
 $('#btnSearch').onclick=()=>{ sBar.hidden=!sBar.hidden; if(!sBar.hidden){ qIn.value=''; qRes.innerHTML=''; qIn.focus(); } };
@@ -580,14 +656,15 @@ qIn.addEventListener('input',()=>{
 document.addEventListener('keydown',e=>{ if(e.key==='Escape') sBar.hidden=true; });
 
 // ---------- vòng cập nhật ----------
-function refresh(){ paint3D(); renderHeader(); renderRail();
+function refresh(){ runFDD(); paint3D(); renderHeader(); renderRail();
   if(view.tab==='tower') renderTower();
   else if(view.tab==='floor') renderFloor();
   else if(view.tab==='alarms') renderAlarms();
   else if(view.tab==='ops') renderOps();
+  else if(view.tab==='fdd') renderFDD();
   if(view.tab==='floor' && view.sub==='3d' && window.F3 && F3.isBuilt()===view.floor) F3.paint();
   if(view.sel && $('#sheet').classList.contains('open')) renderSheet(view.sel); }
-paint3D(); resize3D(); fit3D(); setTab('tower'); refresh();
+paint3D(); resize3D(); fit3D(); runFDD(); setTab('tower'); refresh();
 $('#loading').remove();
 setInterval(()=>{ if(document.hidden) return; tick(); refresh(); },1500);
 setInterval(()=>{ if(!document.hidden) renderHeader(); },1000);
