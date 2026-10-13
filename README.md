@@ -93,6 +93,27 @@ rằng đó là số mô phỏng.
 | `GET /api/users` · `POST /api/users` | quản lý người dùng (cần quyền quản trị) |
 | `GET /api/history` · `POST /api/history` | lịch sử dài hạn theo ngày |
 
+## Bảng thống kê
+
+Thẻ **Thống kê** dành cho người ra quyết định và cho việc giới thiệu sản phẩm, tách khỏi các màn
+vận hành hằng ngày:
+
+- Chỉ số hôm nay: điện năng, chi phí, chênh so với mức chuẩn, cường độ W/m² trên diện tích có điều hoà,
+  tỉ lệ điện ngoài giờ, số lỗi đang mở.
+- Đồng hồ sức khoẻ hệ BMS và tiện nghi (tỉ lệ phòng đạt nhiệt độ, đủ khí tươi).
+- Phân rã phụ tải theo điều hoà / chiếu sáng / thông gió / thang máy — ước tính theo trạng thái
+  thiết bị, thay bằng số đo thật khi lắp đồng hồ phụ tải riêng.
+- **Dự báo phụ tải 24 giờ tới** kèm khoảng dao động, lấy mô hình đường chuẩn theo nhiệt độ ngoài trời
+  và lịch vận hành rồi hiệu chỉnh theo sai lệch thực tế mấy giờ gần nhất.
+- **Dự phóng hoá đơn tháng** từ mức dùng trung bình những ngày đã qua.
+- **Bản đồ toà nhà theo phòng** với ba lớp xem: chênh nhiệt độ, CO₂, số người trong phòng.
+  Toàn bộ là số đo đang về từ cảm biến.
+- **Dự đoán rủi ro hỏng hóc**: chấm điểm cộng dồn từ quá chu kỳ bảo trì, triệu chứng trong chẩn đoán,
+  tiền sử lặp lỗi và giờ chạy tích luỹ. Mức "cao" chỉ đặt khi có ít nhất hai loại dấu hiệu khác nhau.
+
+Biểu đồ vẽ thẳng bằng SVG, không kéo thư viện ngoài, để máy chủ trong phòng kỹ thuật chạy được
+khi không có internet.
+
 ## Các mô-đun
 
 | File | Việc |
@@ -100,6 +121,8 @@ rằng đó là số mô phỏng.
 | `site.js` | cấu hình từng toà nhà, lưu trữ tại chỗ |
 | `auth.js` | đăng nhập, phân quyền, khoá màn hình |
 | `history.js` | chốt sổ và đọc lại lịch sử dài hạn |
+| `stats.js` | phân rã phụ tải, dự báo, dự phóng hoá đơn, bản đồ nhiệt, rủi ro hỏng hóc |
+| `dash.js` | bảng thống kê và các biểu đồ SVG |
 | `plan.js` | dữ liệu toà nhà, mặt bằng, thiết bị theo bản vẽ |
 | `alarms.js` | quản lý cảnh báo: gộp trùng, độ trễ xác nhận, chống rung, ưu tiên, nhận xử lý, tạm ẩn, leo thang |
 | `fdd.js` | phát hiện lỗi tự động, ước tính tiền điện lãng phí |

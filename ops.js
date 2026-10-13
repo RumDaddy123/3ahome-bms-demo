@@ -476,7 +476,7 @@ function renderRail(){
 }
 // ---------- điều hướng ----------
 function setTab(t){ view.tab=t;
-  ['tower','floor','alarms','fdd','ops'].forEach(k=>{ const p=$('#pane-'+k); if(p) p.hidden = k!==t; });
+  ['tower','floor','alarms','fdd','dash','ops'].forEach(k=>{ const p=$('#pane-'+k); if(p) p.hidden = k!==t; });
   document.querySelectorAll('.tabbar button').forEach(b=>b.classList.toggle('on',b.dataset.tab===t));
   const rail=$('#floors'); rail.hidden = t!=='floor' && t!=='tower';
   const host = t==='tower' ? $('#stage') : $('#pane-floor');
@@ -485,6 +485,7 @@ function setTab(t){ view.tab=t;
   if(t==='floor') renderFloor();
   if(t==='alarms') renderAlarms();
   if(t==='fdd') renderFDD();
+  if(t==='dash') renderDash();
   if(t==='ops') renderOps();
   renderRail();
 }
@@ -1008,6 +1009,25 @@ function renderFDD(){
   const b=$('#fdBadge'); if(b){ b.hidden=!st.n; b.textContent=st.n; }
 }
 
+// ---------- bảng thống kê ----------
+function renderDash(){
+  if (!window.DASH) return;
+  const ctx = {
+    devices, BLD, floorOf, gia: GIA_KWH,
+    kwNow: devices.filter(d=>d.t==='PANEL').reduce((s,d)=>s+d.st.amp*.38*1.73,0),
+    openAt: h=>{ const dow=new Date().getDay();
+      if(dow===0&&!OPS.sched.sun) return false; if(dow===6&&!OPS.sched.sat) return false;
+      if(OPS.sched.mode==='on') return true; if(OPS.sched.mode==='off') return false;
+      return h>=parseInt(OPS.sched.on) && h<parseInt(OPS.sched.off); },
+    openDev: id=>openDev(devices.find(x=>x.id===id)),
+    openFloor,
+    heatMetric: view.heatMetric||'temp',
+    setHeat: m=>{ view.heatMetric=m; renderDash(); },
+  };
+  $('#dsBody').innerHTML = DASH.render(ctx);
+  DASH.bind($('#dsBody'), ctx);
+}
+
 // ---------- tìm kiếm nhanh ----------
 const sBar=$('#searchBar'), qIn=$('#qInput'), qRes=$('#qRes');
 $('#btnSearch').onclick=()=>{ sBar.hidden=!sBar.hidden; if(!sBar.hidden){ qIn.value=''; qRes.innerHTML=''; qIn.focus(); } };
@@ -1046,6 +1066,7 @@ function refresh(){ runFDD(); if(window.HLT) HLT.scan(devices, floorOf);
   else if(view.tab==='alarms') renderAlarms();
   else if(view.tab==='ops') renderOps();
   else if(view.tab==='fdd') renderFDD();
+  else if(view.tab==='dash') renderDash();
   if(view.tab==='floor' && view.sub==='3d' && window.F3 && F3.isBuilt()===view.floor) F3.paint();
   if(view.sel && $('#sheet').classList.contains('open')) renderSheet(view.sel); }
 EN.seed(h=>{ const dow=new Date().getDay();
